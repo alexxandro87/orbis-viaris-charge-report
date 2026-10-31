@@ -3,7 +3,8 @@
 // offline. It decrypts with the passphrase (PBKDF2 + AES-GCM, like the backup), recomputes monthly reports and the
 // yearly history per card like the site (month price and VAT, cent splitting) and exports to CSV.
 // No backticks nor ${ in the page code: the string is a template literal.
-export const ARCHIVIO_HTML = `<!doctype html>
+import { DIZ, LINGUE } from "./lingue.js";
+const PAGINA = `<!doctype html>
 <html lang="it">
 <head>
 <meta charset="utf-8">
@@ -25,7 +26,7 @@ th.n,td.n{text-align:right}tr.m{cursor:pointer}tr.m:hover{background:rgba(127,12
 </style>
 </head>
 <body>
-<div class="top"><h1 id="tit">Archivio ricariche</h1><div><button id="bLang">English</button></div></div>
+<div class="top"><h1 id="tit">Archivio ricariche</h1><div><select id="bLang" aria-label="Lingua / Language"></select></div></div>
 <div class="card" id="cApri">
   <h2 data-t="Apri l'archivio">Apri l'archivio</h2>
   <div class="bar"><label><span data-t="File">File</span> <input type="file" id="file" accept=".enc"></label> <label><span data-t="Passphrase">Passphrase</span> <input type="password" id="pw" autocomplete="off"></label> <label><input type="checkbox" id="vedi"> <span data-t="mostra">mostra</span></label> <button class="p" id="bApri" data-t="Apri">Apri</button> <span class="sub err" id="esito"></span></div>
@@ -46,20 +47,17 @@ th.n,td.n{text-align:right}tr.m{cursor:pointer}tr.m:hover{background:rgba(127,12
   </div>
 </div>
 <script>
-var LANG="it",A=null,REP={},ANNO=null,MESE=null;
-var D={"Apri l'archivio":"Open the archive","File":"File","Passphrase":"Passphrase","Apri":"Open","Anno":"Year","Scarica CSV":"Download CSV",
-"Tutto avviene in questa pagina, senza connessione: il file non viene inviato da nessuna parte. Senza la passphrase l'archivio non si apre.":"Everything happens in this page, offline: the file is not sent anywhere. Without the passphrase the archive cannot be opened.",
-"Tocca un mese per vedere le tessere e le singole ricariche.":"Tap a month to see the cards and the single charges.","Ricariche avviate da app (non attribuite a una tessera)":"Charges started from the app (not attributed to a card)","Singole ricariche":"Single charges",
-"Mese":"Month","Ricariche":"Charges","kWh tessere":"Card kWh","kWh app":"App kWh","kWh":"kWh","€/kWh":"€/kWh","IVA %":"VAT %","Imponibile":"Net","IVA":"VAT","Totale":"Total","Tessera":"Card","Nome":"Name","Inizio":"Start","Fine":"End","Totale anno":"Year total",
-"Scegli il file e scrivi la passphrase":"Choose the file and type the passphrase","Passphrase sbagliata o file danneggiato":"Wrong passphrase or damaged file","mostra":"show","Non riesco a leggere il file: estrai lo zip in una cartella e scegli il file da lì":"Cannot read the file: extract the zip into a folder and choose the file from there","Questo browser non permette di decifrare da un file locale: prova con Chrome, Edge o Firefox aggiornati":"This browser does not allow decrypting from a local file: try an up-to-date Chrome, Edge or Firefox","Questo file non è un archivio delle ricariche":"This file is not a charges archive","Archivio ricariche":"Charges archive",
-"(tessera non in elenco)":"(card not in the list)","Periodo":"Period","generato il":"generated on","sessioni":"sessions","Il prezzo del mese non è stato inserito: importi non disponibili":"The month price was not entered: amounts not available","Italiano":"Italiano","English":"English"};
+var LANG=(function(){var l=(navigator.language||"").slice(0,2);return /^(it|en|es|fr|de)$/.test(l)?l:"en"})(),A=null,REP={},ANNO=null,MESE=null;
+var I=__ARCH_D__,LOC={it:"it-IT",en:"en-GB",es:"es-ES",fr:"fr-FR",de:"de-DE"};
 var MESI={it:["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"],en:["January","February","March","April","May","June","July","August","September","October","November","December"]};
-function T(s){return LANG==="en"&&D[s]!==undefined?D[s]:s}
+function T(s){var d=I.d[LANG];return d&&d[s]!==undefined?d[s]:s}
+function mese(i){if(MESI[LANG])return MESI[LANG][i];var s=new Date(2000,i,1).toLocaleString(LOC[LANG],{month:"long"});return s.charAt(0).toUpperCase()+s.slice(1)}
 function $(i){return document.getElementById(i)}
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
-function num(x,d){if(x===null||x===undefined)return "-";return x.toLocaleString(LANG==="en"?"en-GB":"it-IT",{minimumFractionDigits:d,maximumFractionDigits:d})}
-function trDom(){document.querySelectorAll("[data-t]").forEach(function(e){e.textContent=T(e.getAttribute("data-t"))});document.documentElement.lang=LANG;$("bLang").textContent=LANG==="en"?"Italiano":"English";$("tit").textContent=T("Archivio ricariche")}
-$("bLang").onclick=function(){LANG=LANG==="en"?"it":"en";trDom();if(A)disegna()};
+function num(x,d){if(x===null||x===undefined)return "-";return x.toLocaleString(LOC[LANG],{minimumFractionDigits:d,maximumFractionDigits:d})}
+function trDom(){document.querySelectorAll("[data-t]").forEach(function(e){e.textContent=T(e.getAttribute("data-t"))});document.documentElement.lang=LANG;$("bLang").value=LANG;$("tit").textContent=T("Archivio ricariche")}
+(function(){var h="";for(var k in I.lingue)h+='<option value="'+k+'">'+I.lingue[k]+"</option>";$("bLang").innerHTML=h})();
+$("bLang").onchange=function(){LANG=this.value;trDom();if(A)disegna()};
 // ---------- cifratura: ARC1 + salt(16) + iv(12) + AES-GCM(PBKDF2 600000, SHA-256)
 function decifra(buf,pw){
   var u=new Uint8Array(buf),enc=new TextEncoder();
@@ -127,10 +125,10 @@ function disegna(){
   if(ANNO===null||anni.indexOf(ANNO)<0)ANNO=anni[anni.length-1];
   $("anno").innerHTML=anni.map(function(y){return '<option value="'+y+'"'+(y===ANNO?" selected":"")+">"+y+"</option>"}).join("");
   $("intest").textContent=(A.titolo||T("Archivio ricariche"))+" · "+ANNO;
-  $("info").textContent=T("Periodo")+" "+A.da+" → "+A.a+" · "+A.sessioni.length+" "+T("sessioni")+" · "+T("generato il")+" "+(A.generato?new Date(A.generato).toLocaleString(LANG==="en"?"en-GB":"it-IT"):"-");
+  $("info").textContent=T("Periodo")+" "+A.da+" → "+A.a+" · "+A.sessioni.length+" "+T("sessioni")+" · "+T("generato il")+" "+(A.generato?new Date(A.generato).toLocaleString(LOC[LANG]):"-");
   var h="<tr>"+th(T("Mese"))+th(T("Ricariche"),1)+th(T("kWh tessere"),1)+th(T("kWh app"),1)+th(T("€/kWh"),1)+th(T("IVA %"),1)+th(T("Imponibile"),1)+th(T("IVA"),1)+th(T("Totale"),1)+"</tr>",tot={n:0,kt:0,ka:0,imp:0,iva:0,t:0,ok:false};
   for(var mm=1;mm<=12;mm++){var k=ANNO+"-"+("0"+mm).slice(-2),m=REP[k];
-    h+='<tr class="m'+(MESE===k?" on":"")+'" data-k="'+k+'">'+td(MESI[LANG][mm-1])+td(m?m.n:0,1)+td(num(m?m.kwh_t:0,2),1)+td(num(m?m.kwh_a:0,2),1)+td(m&&m.prezzo!=null?num(m.prezzo,4):"-",1)+td(m&&m.iva_pct!=null?num(m.iva_pct,0):"-",1)+td(num(m?m.imp:null,2),1)+td(num(m?m.iva:null,2),1)+td(num(m?m.tot:null,2),1)+"</tr>";
+    h+='<tr class="m'+(MESE===k?" on":"")+'" data-k="'+k+'">'+td(mese(mm-1))+td(m?m.n:0,1)+td(num(m?m.kwh_t:0,2),1)+td(num(m?m.kwh_a:0,2),1)+td(m&&m.prezzo!=null?num(m.prezzo,4):"-",1)+td(m&&m.iva_pct!=null?num(m.iva_pct,0):"-",1)+td(num(m?m.imp:null,2),1)+td(num(m?m.iva:null,2),1)+td(num(m?m.tot:null,2),1)+"</tr>";
     if(m){tot.n+=m.n;tot.kt+=m.kwh_t;tot.ka+=m.kwh_a;if(m.tot!=null){tot.imp+=m.imp;tot.iva+=m.iva;tot.t+=m.tot;tot.ok=true}}}
   h+="<tr><th>"+T("Totale anno")+"</th>"+th(tot.n,1)+th(num(tot.kt,2),1)+th(num(tot.ka,2),1)+th("",1)+th("",1)+th(tot.ok?num(r2(tot.imp),2):"-",1)+th(tot.ok?num(r2(tot.iva),2):"-",1)+th(tot.ok?num(r2(tot.t),2):"-",1)+"</tr>";
   $("tabA").innerHTML=h;
@@ -138,7 +136,7 @@ function disegna(){
 }
 function disegnaMese(k){
   var m=REP[k];MESE=k;$("cMese").classList.remove("hide");
-  $("titMese").textContent=MESI[LANG][m.mese-1]+" "+m.anno+(m.prezzo==null?" · "+T("Il prezzo del mese non è stato inserito: importi non disponibili"):"");
+  $("titMese").textContent=mese(m.mese-1)+" "+m.anno+(m.prezzo==null?" · "+T("Il prezzo del mese non è stato inserito: importi non disponibili"):"");
   var h="<tr>"+th(T("Tessera"))+th(T("Nome"))+th(T("Ricariche"),1)+th(T("kWh"),1)+th(T("Imponibile"),1)+th(T("IVA"),1)+th(T("Totale"),1)+"</tr>";
   m.tessere.forEach(function(t){h+="<tr>"+td(esc(t.tag))+td(esc(t.nome))+td(t.n,1)+td(num(t.kwh,3),1)+td(num(t.imp,2),1)+td(num(t.iva,2),1)+td(num(t.tot,2),1)+"</tr>"});
   h+="<tr><th></th><th>"+T("Totale")+"</th>"+th(m.tessere.reduce(function(s,t){return s+t.n},0),1)+th(num(m.kwh_t,3),1)+th(num(m.imp_t,2),1)+th(num(m.iva_t,2),1)+th(m.imp_t==null?"-":num(r2(m.imp_t+m.iva_t),2),1)+"</tr>";
@@ -167,3 +165,7 @@ trDom();
 </body>
 </html>
 `;
+
+// dictionaries of the viewer (section "archivio" of every language) put in the page: it must work offline
+export const ARCHIVIO_HTML = PAGINA.replace("__ARCH_D__", () => JSON.stringify({ lingue: LINGUE,
+  d: Object.fromEntries(Object.entries(DIZ).map(([l, x]) => [l, x.archivio])) }).replace(/</g, "\\u003c"));

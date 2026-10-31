@@ -27,6 +27,9 @@ export const STILE = [
   "button:disabled{opacity:.5;cursor:default}",
   // exceptions: header links (language, theme, change password) and the secondary import button
   "button.l{background:none;border-color:transparent;color:var(--acc);min-height:0;padding:4px 6px}button.l:not(:disabled):hover{background:none;border-color:transparent;text-decoration:underline}",
+  // language menu: looks like the header links
+  "select.lingua{background:none;border:1px solid transparent;color:var(--acc);min-height:0;padding:4px 2px;font:inherit;font-weight:600;cursor:pointer;width:auto}select.lingua:hover{border-color:var(--line)}select.lingua option{color:var(--tx);background:var(--bg)}",
+  "select.lingua-p{float:right;padding:0 2px}",
   "#bImporta{background:transparent;color:var(--tx);border-color:var(--line)}#bImporta:not(:disabled):hover{background:var(--soft);border-color:var(--line)}",
   // Log out button: red
   "#bEsci{background:var(--esci);border-color:var(--esci);color:#fff}#bEsci:hover{filter:brightness(1.08)}",
@@ -111,7 +114,7 @@ export const STILE = [
     ".card{margin:12px 0}",
     "button,select,input,textarea{min-height:44px;font-size:16px}",
     "input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px}",
-    "button.l{min-height:36px}",
+    "button.l{min-height:36px}select.lingua{min-height:36px}",
     // bottom tab bar
     "nav{position:fixed;left:0;right:0;bottom:0;z-index:20;margin:0;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:0;background:var(--card);border-top:1px solid var(--line);border-bottom:0;padding:6px 4px calc(8px + env(safe-area-inset-bottom));font-size:15px!important}",
     "nav button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:3px;min-height:52px;padding:4px 2px;background:none;border:0!important;border-radius:12px;font-size:0!important;color:var(--mut);white-space:normal}",

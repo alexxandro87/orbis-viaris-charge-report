@@ -58,7 +58,7 @@ Nel codice non c'è nulla di una installazione specifica: indirizzo della colonn
 - **Archivio delle ricariche**: esportazione cifrata di un periodo in uno zip con visualizzatore HTML offline, ed eliminazione dei mesi esportati per liberare spazio.
 - **Cifratura dei dati personali** (AES-256-GCM, chiave in un secret del Worker) e backup cifrato dalla pagina.
 - **Consumi Cloudflare**: richieste, righe D1, uso OCPP e spazio rispetto ai limiti del piano gratuito, con riepilogo mensile e avviso a ridosso del limite.
-- **Interfaccia in italiano e inglese**, tema giorno / notte / automatico, niente scorrimento orizzontale, tabelle che diventano schede su telefono.
+- **Interfaccia in italiano, inglese, spagnolo, francese e tedesco**: menu della lingua nell'intestazione, alla prima visita la lingua del browser. Mail e messaggi Telegram agli utenti seguono la lingua in cui usano il sito (spagnolo, francese o tedesco seguiti dall'inglese; altrimenti italiano e inglese). Tema giorno / notte / automatico, niente scorrimento orizzontale, tabelle che diventano schede su telefono.
 - **Aspetto da app sul telefono** (fino a 700 px di larghezza): barra delle schede in basso con icone (le schede in più dell'admin vanno nel menu "Altro"), titolo della scheda aperta in alto, campi e pulsanti più grandi.
 - **Aspetto pulito con un'icona per ogni sezione**: riquadri e campi arrotondati, il blu come colore del sito, un marchio blu accanto al titolo. Sul computer l'intestazione scorre via e la barra delle schede, con le icone, resta ferma in alto.
 - **Versione accanto al titolo** (per esempio `v2.3.1`, da `package.json`), per vedere a colpo d'occhio quale release gira su un sito; da telefono compare sotto i collegamenti in alto.
@@ -241,7 +241,7 @@ Per tessera, colonnina e nuova tessera l'amministratore riceve anche la mail (de
 ## Messaggi e bot Telegram
 Facoltativo. Gli utenti che danno il consenso (registrazione o «Il mio profilo») ricevono, oltre alla mail, un messaggio
 Telegram quando: la ricarica finisce (il riepilogo, poi i promemoria finché l'auto resta collegata), viene inserito il prezzo del mese (i loro
-importi), una loro richiesta viene approvata/rifiutata/chiusa, la tessera viene riattivata. Testo in italiano e inglese.
+importi), una loro richiesta viene approvata/rifiutata/chiusa, la tessera viene riattivata. Testo nella lingua dell'utente (come per le mail).
 
 1. Su Telegram apri BotFather, `/newbot`, scegli nome e username; copia il token.
 2. Impostazioni → Telegram: incolla il token, genera (o scrivi) un segreto lungo a caso per il webhook, salva le impostazioni.
@@ -278,7 +278,7 @@ La scheda **Monitoraggio** mostra a tutti la ricarica in corso. Per l'amministra
 - **Notifiche**: avvisi nel sito (contatore delle non lette sulla scheda) per i controlli impostati su "Notifica", per le mail non inviate, per le registrazioni da attivare e i nuovi ticket. L'elenco mostra le non lette e almeno le ultime 5; le altre si aprono con "Mostra tutte".
 - **Avvisi agli utenti** (Monitoraggio): a fine ricarica, all'utente della tessera che ha caricato arriva un riepilogo (inizio, fine, durata, kWh; per le prepagate anche costo e credito residuo) con l'invito a scollegare il cavo e spostare l'auto se è ancora collegata.
   Parte subito se il cavo è stato staccato o la tessera passata, dopo 5 minuti se la presa è in sospeso o il contatore è fermo ad auto piena (la colonnina resta in Charging); niente riepilogo per le ricariche a 0 kWh. Poi, finché l'auto resta collegata, fino a due promemoria (minuti impostabili, 0 = nessuno; di serie 10 e 60).
-  Tutto per mail e, per chi lo ha attivato, Telegram, in italiano e inglese.
+  Tutto per mail e, per chi lo ha attivato, Telegram, nella lingua dell'utente.
 - **Ultimi episodi**: storico con inizio e fine di ogni problema.
 
 ## Consumi Cloudflare
@@ -291,7 +291,7 @@ Impostando il secret `DATA_KEY` (32 byte casuali in base64) nome, cognome, telef
 
 ## Prezzi, IVA e blocco del mese
 
-Inserisci prezzo al kWh e IVA di ogni mese dalla bolletta, quando arriva. Appena il prezzo di un mese è salvato il mese è **bloccato** e non si può più modificare, amministratore compreso (la pagina chiede conferma prima). Se ci sono destinatari, al salvataggio parte la mail con la ripartizione per tessera e il PDF di tutte le sessioni; "Reinvia report" la rimanda. Nello stesso momento ogni utente della colonnina che ha ricaricato in quel mese riceve una mail personale (italiano e inglese) con i soli suoi importi: prezzo, IVA e, per ogni sua tessera, sessioni, kWh, imponibile, IVA e totale. È sempre attiva, senza impostazione per disattivarla; non parte per chi non ha sessioni nel mese o non ha ancora confermato l'email, "Reinvia report" non la rimanda e ne partono al massimo 40 per salvataggio (limite del piano gratuito; se qualcuna non parte o supera il limite l'amministratore riceve una notifica). Gli utenti della colonnina vedono una nota sui mesi senza prezzo.
+Inserisci prezzo al kWh e IVA di ogni mese dalla bolletta, quando arriva. Appena il prezzo di un mese è salvato il mese è **bloccato** e non si può più modificare, amministratore compreso (la pagina chiede conferma prima). Se ci sono destinatari, al salvataggio parte la mail con la ripartizione per tessera e il PDF di tutte le sessioni; "Reinvia report" la rimanda. Nello stesso momento ogni utente della colonnina che ha ricaricato in quel mese riceve una mail personale (nella sua lingua) con i soli suoi importi: prezzo, IVA e, per ogni sua tessera, sessioni, kWh, imponibile, IVA e totale. È sempre attiva, senza impostazione per disattivarla; non parte per chi non ha sessioni nel mese o non ha ancora confermato l'email, "Reinvia report" non la rimanda e ne partono al massimo 40 per salvataggio (limite del piano gratuito; se qualcuna non parte o supera il limite l'amministratore riceve una notifica). Gli utenti della colonnina vedono una nota sui mesi senza prezzo.
 
 Correzione d'emergenza di un mese bloccato, da terminale:
 
@@ -337,7 +337,7 @@ Un secret si imposta con `npx wrangler secret put NOME`.
 Dalla pagina: **Impostazioni > Backup del database** (amministratore): backup cifrato con passphrase, oppure il dump in chiaro su `/api/backup`. Da terminale: `npx wrangler d1 export ricariche --remote --output backup.sql`. Ripristino con `npx wrangler d1 execute ricariche --remote --file=backup.sql`. D1 conserva anche 7 giorni di storia (Time Travel). Il dump contiene la password della colonnina e la chiave Resend salvate: tienilo privato. Il controllo "backup non fatto da molto" te lo ricorda.
 
 ## Archivio delle ricariche
-Impostazioni > «Archivio delle ricariche»: scegli da mese/anno a mese/anno e una passphrase, scarichi uno zip con l'estrazione cifrata (sessioni, prezzi, nomi delle tessere) e `archivio.html`, che la apre in qualunque browser senza connessione: storico annuale, dettaglio mensile per tessera, singole ricariche, CSV, italiano e inglese. Cifratura AES-256-GCM con chiave da passphrase (PBKDF2, 600.000 iterazioni), tutto nel browser: la passphrase non è salvata da nessuna parte. «Elimina dal sito le sessioni fino a» libera spazio su Cloudflare e vale solo per i mesi già esportati dall'inizio dello storico, mai per il mese corrente: le sessioni tolte restano solo negli archivi.
+Impostazioni > «Archivio delle ricariche»: scegli da mese/anno a mese/anno e una passphrase, scarichi uno zip con l'estrazione cifrata (sessioni, prezzi, nomi delle tessere) e `archivio.html`, che la apre in qualunque browser senza connessione: storico annuale, dettaglio mensile per tessera, singole ricariche, CSV, nelle cinque lingue. Cifratura AES-256-GCM con chiave da passphrase (PBKDF2, 600.000 iterazioni), tutto nel browser: la passphrase non è salvata da nessuna parte. «Elimina dal sito le sessioni fino a» libera spazio su Cloudflare e vale solo per i mesi già esportati dall'inizio dello storico, mai per il mese corrente: le sessioni tolte restano solo negli archivi.
 
 ## Sviluppo in locale
 
@@ -379,7 +379,7 @@ npx wrangler dev
 - Una colonnina, una presa, un prezzo al mese.
 - La gestione tessere e la lista offline sono costruite intorno all'interfaccia web e al comportamento OCPP del firmware 7.2.53.
 - I messaggi Telegram richiedono un bot (Impostazioni → Telegram); senza, si raccoglie solo il consenso.
-- I nomi interni (funzioni, campi delle API) sono in italiano per ragioni storiche; commenti del codice in inglese; interfaccia, mail e documentazione bilingui.
+- I nomi interni (funzioni, campi delle API) sono in italiano per ragioni storiche; commenti del codice in inglese; documentazione in inglese e italiano. I testi dell'interfaccia sono scritti in italiano in `src/ui.js` e tradotti in `src/lingue/<codice>.js` (chiave = il testo italiano; sezioni per ogni pagina, messaggi del server, registro OCPP, visualizzatore dell'archivio, mail e Telegram, nomi dei paesi). Il server mette in ogni pagina solo il dizionario della lingua in uso (cookie `lang`, altrimenti la lingua del browser). Per aggiungere una lingua: copia `src/lingue/en.js`, traduci i valori e aggiungila in `src/lingue.js`.
 
 ## Licenza
 

@@ -58,7 +58,7 @@ Nothing about a specific installation is in the code: charger address, title, ti
 - **Charges archive**: encrypted export of a period as a zip with an offline HTML viewer, and deletion of exported months to free space.
 - **Encryption of personal data** (AES-256-GCM, key in a Worker secret) and encrypted backup from the page.
 - **Cloudflare usage** box: requests, D1 rows, OCPP usage and storage against the free-plan limits, with a monthly summary and an alert near the limit.
-- **English and Italian interface**, day / night / auto theme, no horizontal scrolling, tables that become cards on phones.
+- **Interface in English, Italian, Spanish, French and German**: language menu in the header, the browser language at the first visit. Emails and Telegram messages to users follow the language they use the site in (Spanish, French or German followed by English; Italian and English otherwise). Day / night / auto theme, no horizontal scrolling, tables that become cards on phones.
 - **App-like layout on phones** (up to 700 px wide): bottom tab bar with icons (the administrator's extra tabs go into a "More" menu), the open tab's title at the top, larger fields and buttons.
 - **Clean look with an icon for each section**: rounded cards and fields, blue as the site colour, a blue brand mark next to the title. On a computer the header scrolls away and the tab bar, with the icons, stays fixed at the top.
 - **Version next to the title** (for example `v2.3.1`, from `package.json`), so you can see at a glance which release a site is running; on phones it is shown under the links at the top.
@@ -241,7 +241,7 @@ For card, charger and new-card tickets the administrator also gets an email (mon
 ## Telegram messages and bot
 Optional. Users who give the consent (registration or "My profile") get, besides the email, a Telegram message when: a charge
 finishes (the summary, then the reminders while the car stays plugged in), the monthly price is entered (their amounts), one of their requests
-is approved/rejected/closed, their card is reactivated. Text in Italian and English, no HTML.
+is approved/rejected/closed, their card is reactivated. Text in the user's language (as for emails), no HTML.
 
 1. On Telegram open BotFather, `/newbot`, choose a name and a username; copy the token.
 2. Settings → Telegram: paste the token, generate (or type) a long random webhook secret, save the settings.
@@ -278,7 +278,7 @@ The **Monitoring** tab shows the charge in progress to everyone. For the adminis
 - **Notifications**: in-site alerts (unread counter on the tab) for checks set to "Notification", for emails that could not be sent, for registrations to activate and new tickets. The list shows the unread ones and at least the last 5; the others open with "Show all".
 - **Notices to users** (Monitoring): at the end of a charge the user whose card charged gets a summary (start, end, duration, kWh; for prepaid cards also the cost and the remaining credit) with a request to unplug the cable and move the car if it is still plugged in.
   It goes out at once if the cable was unplugged or the card swiped, after 5 minutes if the socket is suspended or the counter is still with a full car (the charger stays in Charging); no summary for 0 kWh charges. Then, while the car stays plugged in, up to two reminders (minutes configurable, 0 = none; defaults 10 and 60).
-  All by email and, for those who enabled it, Telegram, in Italian and English.
+  All by email and, for those who enabled it, Telegram, in the user's language.
 - **Last episodes**: history with start and end of each problem.
 
 ## Cloudflare usage
@@ -291,7 +291,7 @@ Set the `DATA_KEY` secret (32 random bytes in base64) and first name, last name,
 
 ## Prices, VAT and the month lock
 
-Enter price per kWh and VAT for each month from the electricity bill, whenever the bill arrives. As soon as a month's price is saved the month is **locked** and cannot be changed again, administrator included (the page asks for confirmation first). If report recipients are set, saving the price emails the split per card with a PDF of every session; "Email report again" sends it once more. At the same moment every charger user who charged that month gets a personal email (Italian and English) with their own amounts only: price, VAT and, for each of their cards, sessions, kWh, net, VAT and total. It is always on, with no setting to turn it off; it is not sent to users with no sessions that month or who have not yet confirmed their email, "Email report again" does not resend it, and at most 40 are sent per save (free-plan limit; if some fail or exceed it the administrator gets a notification). Charger users see a note on months without a price.
+Enter price per kWh and VAT for each month from the electricity bill, whenever the bill arrives. As soon as a month's price is saved the month is **locked** and cannot be changed again, administrator included (the page asks for confirmation first). If report recipients are set, saving the price emails the split per card with a PDF of every session; "Email report again" sends it once more. At the same moment every charger user who charged that month gets a personal email (in their language) with their own amounts only: price, VAT and, for each of their cards, sessions, kWh, net, VAT and total. It is always on, with no setting to turn it off; it is not sent to users with no sessions that month or who have not yet confirmed their email, "Email report again" does not resend it, and at most 40 are sent per save (free-plan limit; if some fail or exceed it the administrator gets a notification). Charger users see a note on months without a price.
 
 Emergency correction of a locked month, from a terminal:
 
@@ -337,7 +337,7 @@ Set a secret with `npx wrangler secret put NAME`.
 From the page: **Settings > Database backup** (administrator): encrypted backup with a passphrase, or the plain dump at `/api/backup`. From a terminal: `npx wrangler d1 export ricariche --remote --output backup.sql`. Restore with `npx wrangler d1 execute ricariche --remote --file=backup.sql`. D1 also keeps 7 days of point-in-time history. The dump contains the saved charger password and Resend key: keep it private. The "backup too old" monitoring check reminds you.
 
 ## Charges archive
-Settings > "Charges archive": pick from month/year to month/year and a passphrase, and download a zip with the encrypted extraction (sessions, prices, card names) and `archivio.html`, which opens it in any browser offline: yearly history, monthly detail per card, single charges, CSV, Italian and English. AES-256-GCM encryption with a key derived from the passphrase (PBKDF2, 600,000 iterations), all in the browser: the passphrase is stored nowhere. "Delete from the site the sessions up to" frees space on Cloudflare and works only for months already exported from the start of the history, never for the current month: deleted sessions remain only in the archives.
+Settings > "Charges archive": pick from month/year to month/year and a passphrase, and download a zip with the encrypted extraction (sessions, prices, card names) and `archivio.html`, which opens it in any browser offline: yearly history, monthly detail per card, single charges, CSV, in the five languages. AES-256-GCM encryption with a key derived from the passphrase (PBKDF2, 600,000 iterations), all in the browser: the passphrase is stored nowhere. "Delete from the site the sessions up to" frees space on Cloudflare and works only for months already exported from the start of the history, never for the current month: deleted sessions remain only in the archives.
 
 ## Local development
 
@@ -379,7 +379,7 @@ npx wrangler dev
 - One charger, one socket, one price per month.
 - Card management and the offline list are built around the Orbis web interface and OCPP behaviour of firmware 7.2.53.
 - Telegram messages need a bot (Settings → Telegram); without it only the consent is collected.
-- Internal names (functions, API fields) are in Italian for historical reasons; code comments, user interface, emails and documentation are in English and Italian.
+- Internal names (functions, API fields) are in Italian for historical reasons; code comments are in English; documentation in English and Italian. Interface texts are written in Italian in `src/ui.js` and translated in `src/lingue/<code>.js` (keys = the Italian text; sections for each page, server messages, OCPP log, archive viewer, emails and Telegram, country names). The server puts in each page only the dictionary of the language in use (cookie `lang`, otherwise the browser language). To add a language: copy `src/lingue/en.js`, translate the values and add it to `src/lingue.js`.
 
 ## License
 

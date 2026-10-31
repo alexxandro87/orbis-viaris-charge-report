@@ -7,6 +7,7 @@
 import { HTML, LOGIN, INVITO, SETUP } from "./ui.js";
 import { STILE } from "./stile.js";
 import { ARCHIVIO_HTML } from "./archivio.js";
+import { LINGUE, LOCALE, linguaRichiesta, conLingua, lingueMessaggio, tm } from "./lingue.js";
 // version shown next to the title, read from package.json (semver: fix -> patch, new feature -> minor)
 import pkg from "../package.json";
 const VERSIONE = "v" + pkg.version;
@@ -14,7 +15,8 @@ const VERSIONE = "v" + pkg.version;
 const conStile = (h) => h.replace("</head>", "<style>\n" + STILE + "\n</style>\n</head>").replace(/__VERSION__/g, VERSIONE);
 const P_HTML = conStile(HTML), P_LOGIN = conStile(LOGIN), P_INVITO = conStile(INVITO), P_SETUP = conStile(SETUP);
 const escHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const pagina = (h) => h.replaceAll("__TITLE__", () => escHtml(TITOLO));   // site title from Settings
+// site title from Settings, language of the request (dictionary of the page included)
+const pagina = (h, req) => conLingua(h.replaceAll("__TITLE__", () => escHtml(TITOLO)), linguaRichiesta(req));
 // anti-bot check (Cloudflare Turnstile) on registration, optional: TURNSTILE_SITE_KEY in wrangler.toml and the TURNSTILE_SECRET secret
 const turnstileAttivo = (env) => !!(env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET);
 const paginaLogin = (env) => turnstileAttivo(env)
@@ -754,7 +756,7 @@ async function preparaTabelle(env) {
     env.DB.prepare("CREATE TABLE IF NOT EXISTS prepagate (tag TEXT PRIMARY KEY, prezzo_cent INTEGER NOT NULL, credito_cent INTEGER NOT NULL DEFAULT 0, dal INTEGER NOT NULL, soglia_cent INTEGER NOT NULL DEFAULT 500, storico TEXT, avvisata INTEGER DEFAULT 0, bloccata INTEGER DEFAULT 0, residuo_wh INTEGER, residuo_cent INTEGER, calcolato INTEGER, aperta TEXT)"),   // prepaid cards: credit deducted with a per-card price
   ]);
   const col = (await env.DB.prepare("PRAGMA table_info(utenti)").all()).results.map((c) => c.name);
-  for (const [nome, tipo] of [["permessi", "TEXT"], ["invito_hash", "TEXT"], ["invito_exp", "INTEGER"], ["tessera", "TEXT"], ["cognome", "TEXT"], ["nome_proprio", "TEXT"], ["tel1", "TEXT"], ["tel2", "TEXT"], ["verifica_hash", "TEXT"], ["verifica_exp", "INTEGER"], ["consensi", "TEXT"], ["registrato_il", "TEXT"], ["profilo_il", "TEXT"], ["tessere_altre", "TEXT"], ["tg_chat", "TEXT"], ["tg_codice", "TEXT"], ["tg_exp", "INTEGER"]])
+  for (const [nome, tipo] of [["permessi", "TEXT"], ["invito_hash", "TEXT"], ["invito_exp", "INTEGER"], ["tessera", "TEXT"], ["cognome", "TEXT"], ["nome_proprio", "TEXT"], ["tel1", "TEXT"], ["tel2", "TEXT"], ["verifica_hash", "TEXT"], ["verifica_exp", "INTEGER"], ["consensi", "TEXT"], ["registrato_il", "TEXT"], ["profilo_il", "TEXT"], ["tessere_altre", "TEXT"], ["tg_chat", "TEXT"], ["tg_codice", "TEXT"], ["tg_exp", "INTEGER"], ["lingua", "TEXT"]])
     if (!col.includes(nome)) await env.DB.prepare(`ALTER TABLE utenti ADD COLUMN ${nome} ${tipo}`).run();
   const colT = (await env.DB.prepare("PRAGMA table_info(ticket)").all()).results.map((c) => c.name);
   if (!colT.includes("integrazioni")) await env.DB.prepare("ALTER TABLE ticket ADD COLUMN integrazioni TEXT").run();   // user additions to the ticket (encrypted JSON)
@@ -798,11 +800,13 @@ async function utenteCorrente(req, env) {
     const p = (/^(.+)~(\d+)~([0-9a-f]{16})~([0-9a-f]{64})$/.exec(val) || []).slice(1);
     const adesso = Date.now() / 1000;
     if (p.length === 4 && +p[1] > adesso && +p[1] <= adesso + DURATA_SESSIONE + 60) {   // old 30-day cookies are no longer valid
-      const u = await env.DB.prepare("SELECT nome, hash, ruolo, permessi, tessera, tessere_altre, verifica_hash FROM utenti WHERE nome=?").bind(p[0]).first();
+      const u = await env.DB.prepare("SELECT nome, hash, ruolo, permessi, tessera, tessere_altre, verifica_hash, lingua FROM utenti WHERE nome=?").bind(p[0]).first();
       if (u && u.hash && !u.verifica_hash && uguali(p[3], await firma(env, `${u.nome}|${p[1]}|${p[2]}|${u.hash.slice(0, 16)}`))) {
         const rev = await env.DB.prepare("SELECT 1 FROM revocati WHERE sig=?").bind(p[3]).first();
         if (!rev) {
           if (+p[1] - adesso < DURATA_SESSIONE - 120) RINNOVI.set(req, { nome: u.nome, hash: u.hash });   // cookie older than 2 minutes: renew it
+          const l = linguaRichiesta(req);                // language the user sees the site in: emails and Telegram follow it
+          if (l !== u.lingua) await env.DB.prepare("UPDATE utenti SET lingua=? WHERE nome=?").bind(l, u.nome).run();
           return { nome: u.nome, ruolo: u.ruolo, perm: permessiDi(u), tessera: u.tessera || null, tessere: tessereDi(u) };
         }
       }
@@ -885,10 +889,10 @@ async function inviaMail(env, a, oggetto, html, cc, allegati) {
   } catch (e) { return "errore: " + msgErrore(e); }
 }
 
-const NOREPLY = `<p style="margin-top:20px"><b>Per contattarci usa la sezione Assistenza nell'area riservata del sito.<br>` +
-  `To contact us, use the Support section in the reserved area of the site.</b></p>` +
-  `<p style="margin-top:16px"><b>Questa casella non riceve email in ingresso: si prega di non rispondere a questo messaggio.<br>` +
-  `This mailbox does not receive incoming email: please do not reply to this message.</b></p>`;
+// footer of the emails, in the languages of the email
+const noreply = (lingue) => `<p style="margin-top:20px"><b>${lingue.map((l) => tm(l, "Per contattarci usa la sezione Assistenza nell'area riservata del sito.")).join("<br>")}</b></p>` +
+  `<p style="margin-top:16px"><b>${lingue.map((l) => tm(l, "Questa casella non riceve email in ingresso: si prega di non rispondere a questo messaggio.")).join("<br>")}</b></p>`;
+const NOREPLY = noreply(["it", "en"]);
 
 // ---------------------------------------------------- what consumes: calls, D1 queries and outbound calls per page/API (meta "consumo_chi")
 // The D1 binding is wrapped in a proxy that counts the queries of the request; outbound calls are counted by wrapping fetch.
@@ -971,7 +975,7 @@ async function salvaChatTelegram(env, nome, lista) {
 }
 // the user a chat belongs to: chats are encrypted, so the (few) linked users are scanned and decrypted
 async function utenteDaChat(env, chat) {
-  const righe = (await env.DB.prepare("SELECT nome, ruolo, tessera, tessere_altre, tg_chat FROM utenti WHERE tg_chat IS NOT NULL").all()).results;
+  const righe = (await env.DB.prepare("SELECT nome, ruolo, tessera, tessere_altre, tg_chat, lingua FROM utenti WHERE tg_chat IS NOT NULL").all()).results;
   for (const u of righe) if ((await chatTelegram(env, u)).includes(chat)) return u;
   return null;
 }
@@ -1026,14 +1030,15 @@ async function inviaCodaMessaggi(env) {
 const COMANDI_BOT = [
   ["smarrita", "Tessera smarrita (poi scegli la tessera)"], ["danneggiata", "Tessera danneggiata o non funzionante (poi scegli la tessera)"],
   ["problema", "Problema con la colonnina (poi scrivi il testo)"], ["richieste", "Le mie richieste"], ["aiuto", "Elenco dei comandi"], ["stop", "Scollega questa chat"]];
-const MENU_BOT = [[{ text: "Tessera smarrita / Lost card", callback_data: "cmd:smarrita" }, { text: "Tessera danneggiata / Damaged card", callback_data: "cmd:danneggiata" }],
-  [{ text: "Problema con la colonnina / Charger problem", callback_data: "cmd:problema" }, { text: "Le mie richieste / My requests", callback_data: "cmd:richieste" }]];
-const AIUTO_BOT = "Comandi / Commands:\n" +
-  "/smarrita - tessera smarrita: scegli la tessera dai bottoni, viene bloccata subito / lost card: pick it from the buttons, blocked at once\n" +
-  "/danneggiata - tessera danneggiata o non funzionante: scegli dai bottoni / damaged or faulty card: pick it from the buttons\n" +
-  "/problema - problema con la colonnina: poi scrivi il testo / charger problem: then write the text\n" +
-  "/richieste - le mie richieste / my requests\n" +
-  "/stop - scollega questa chat / unlink this chat";
+// bot texts in the user's languages: one line per language, or "A / B" for buttons
+const bot = (lingua, k, v) => lingueMessaggio(lingua).map((l) => tm(l, k, v)).join("\n");
+const botB = (lingua, k) => lingueMessaggio(lingua).map((l) => tm(l, k)).join(" / ");
+const menuBot = (g) => [[{ text: botB(g, "Tessera smarrita"), callback_data: "cmd:smarrita" }, { text: botB(g, "Tessera danneggiata"), callback_data: "cmd:danneggiata" }],
+  [{ text: botB(g, "Problema con la colonnina"), callback_data: "cmd:problema" }, { text: botB(g, "Le mie richieste"), callback_data: "cmd:richieste" }]];
+const annullaBot = (g) => [[{ text: botB(g, "Annulla"), callback_data: "annulla" }]];
+const aiutoBot = (g) => botB(g, "Comandi") + ":\n" + [["smarrita", "tessera smarrita: scegli la tessera dai bottoni, viene bloccata subito"],
+  ["danneggiata", "tessera danneggiata o non funzionante: scegli dai bottoni"], ["problema", "problema con la colonnina: poi scrivi il testo"],
+  ["richieste", "le mie richieste"], ["stop", "scollega questa chat"]].map(([c, k]) => `/${c} - ${botB(g, k)}`).join("\n");
 async function telegramWebhook(req, env, url) {
   if (!telegramAttivo() || url.pathname !== "/api/telegram/" + TG.secret
     || req.headers.get("x-telegram-bot-api-secret-token") !== TG.secret) return new Response("", { status: 404 });
@@ -1055,16 +1060,16 @@ async function telegramWebhook(req, env, url) {
     c = cmd ? cmd[1].toLowerCase() : ""; arg = cmd && cmd[2] ? cmd[2].trim() : "";
   }
   if (c === "start") {
-    const u = /^[0-9a-f]{16,64}$/.test(arg) ? await env.DB.prepare("SELECT nome, tg_chat FROM utenti WHERE tg_codice=? AND tg_exp>?").bind(arg, Math.floor(Date.now() / 1000)).first() : null;
-    if (!u) { await rispondi("Codice non valido o scaduto: genera un nuovo collegamento dal profilo del sito.\nInvalid or expired code: generate a new link from your profile on the site."); return json({ ok: true }); }
+    const u = /^[0-9a-f]{16,64}$/.test(arg) ? await env.DB.prepare("SELECT nome, tg_chat, lingua FROM utenti WHERE tg_codice=? AND tg_exp>?").bind(arg, Math.floor(Date.now() / 1000)).first() : null;
+    if (!u) { await rispondi(bot(null, "Codice non valido o scaduto: genera un nuovo collegamento dal profilo del sito.")); return json({ ok: true }); }
     const lista = await chatTelegram(env, u);
     if (!lista.includes(chat)) {
-      if (lista.length >= 2) { await rispondi("Questo account ha già due chat Telegram collegate: scollegane una con /stop.\nThis account already has two Telegram chats linked: unlink one with /stop."); return json({ ok: true }); }
+      if (lista.length >= 2) { await rispondi(bot(u.lingua, "Questo account ha già due chat Telegram collegate: scollegane una con /stop.")); return json({ ok: true }); }
       lista.push(chat);
     }
     await salvaChatTelegram(env, u.nome, lista);
     await env.DB.prepare("UPDATE utenti SET tg_codice=NULL, tg_exp=NULL WHERE nome=?").bind(u.nome).run();
-    await rispondi(`${TITOLO}\n\nTelegram collegato: qui riceverai i messaggi di servizio.\nTelegram linked: service messages will arrive here.\n\n${AIUTO_BOT}`, MENU_BOT);
+    await rispondi(`${TITOLO}\n\n${bot(u.lingua, "Telegram collegato: qui riceverai i messaggi di servizio.")}\n\n${aiutoBot(u.lingua)}`, menuBot(u.lingua));
     return json({ ok: true });
   }
   const u = await utenteDaChat(env, chat);
@@ -1080,26 +1085,28 @@ async function telegramWebhook(req, env, url) {
   if (attesa) { delete attese[chat]; await salvaMeta(env, "tg_attesa", attese); }   // a command cancels the wait
   if (c === "stop") {
     await salvaChatTelegram(env, u.nome, (await chatTelegram(env, u)).filter((x) => x !== chat));
-    await rispondi("Chat scollegata: qui non arriveranno più messaggi. Per ricollegarla usa il profilo del sito.\nChat unlinked: no more messages here. Use your profile on the site to link it again.");
+    await rispondi(bot(u.lingua, "Chat scollegata: qui non arriveranno più messaggi. Per ricollegarla usa il profilo del sito."));
   } else if (c === "smarrita" || c === "danneggiata") {
     const mie = tessereDi(u), tag = arg.toUpperCase();
-    if (!mie.length) await rispondi("Non hai tessere abbinate.\nYou have no cards linked.");
+    if (!mie.length) await rispondi(bot(u.lingua, "Non hai tessere abbinate."));
     else if (!mie.includes(tag)) {                         // one button per card (code and name), plus Cancel
       const nomi = await nomiDb(env);
-      await rispondi(c === "smarrita" ? "Quale tessera hai smarrito? Verrà bloccata subito sulla colonnina.\nWhich card did you lose? It will be blocked on the charger at once." : "Quale tessera è danneggiata o non funziona?\nWhich card is damaged or faulty?",
-        mie.map((x) => [{ text: x + (nomi.get(x) ? " · " + nomi.get(x) : ""), callback_data: c + ":" + x }]).concat([[{ text: "Annulla / Cancel", callback_data: "annulla" }]]));
+      await rispondi(bot(u.lingua, c === "smarrita" ? "Quale tessera hai smarrito? Verrà bloccata subito sulla colonnina." : "Quale tessera è danneggiata o non funziona?"),
+        mie.map((x) => [{ text: x + (nomi.get(x) ? " · " + nomi.get(x) : ""), callback_data: c + ":" + x }]).concat(annullaBot(u.lingua)));
     }
     else await rispondi(await ticketDalBot(env, u, url, { azione: "apri", tipo: "tessera", tessera: tag, motivo: c }));
   } else if (c === "problema") {
     if (!arg) {
       attese[chat] = { tipo: "colonnina", fino: ora + 10 * 60000 }; await salvaMeta(env, "tg_attesa", attese);
-      await rispondi("Scrivi il problema in un messaggio e premi invio: lo inoltro all'amministratore. Hai 10 minuti; /annulla per annullare.\nWrite the problem in a message and press send: I will forward it to the administrator. You have 10 minutes; /annulla to cancel.", [[{ text: "Annulla / Cancel", callback_data: "annulla" }]]);
+      await rispondi(bot(u.lingua, "Scrivi il problema in un messaggio e premi invio: lo inoltro all'amministratore. Hai 10 minuti; /annulla per annullare."), annullaBot(u.lingua));
     } else await rispondi(await ticketDalBot(env, u, url, { azione: "apri", tipo: "colonnina", testo: arg }));
   } else if (c === "richieste") {
     const r = (await env.DB.prepare("SELECT id, tipo, stato, creato FROM ticket WHERE utente=? ORDER BY id DESC LIMIT 10").bind(u.nome).all()).results;
-    await rispondi(r.length ? "Le tue richieste / Your requests:\n" + r.map((x) => `#${x.id} ${TIPI_TICKET[x.tipo] || x.tipo} - ${x.stato} (${String(x.creato).slice(0, 10)})`).join("\n") : "Nessuna richiesta.\nNo requests.", MENU_BOT.concat([[{ text: "Annulla / Cancel", callback_data: "annulla" }]]));
-  } else if (c === "annulla") await rispondi("Annullato.\nCancelled.");
-  else await rispondi(AIUTO_BOT, MENU_BOT);
+    const l0 = lingueMessaggio(u.lingua)[0];             // the list in the user's language (or Italian)
+    await rispondi(r.length ? botB(u.lingua, "Le tue richieste") + ":\n" + r.map((x) => `#${x.id} ${tm(l0, TIPI_TICKET[x.tipo] || x.tipo)} - ${tm(l0, x.stato)} (${String(x.creato).slice(0, 10)})`).join("\n")
+      : bot(u.lingua, "Nessuna richiesta."), menuBot(u.lingua).concat(annullaBot(u.lingua)));
+  } else if (c === "annulla") await rispondi(bot(u.lingua, "Annullato."));
+  else await rispondi(aiutoBot(u.lingua), menuBot(u.lingua));
   return json({ ok: true });
 }
 // opens a request as from the site, with the same ticket() function: card block, email/notification to the admin, limit of 5 open
@@ -1107,10 +1114,9 @@ async function ticketDalBot(env, u, url, corpo) {
   const me = { nome: u.nome, ruolo: u.ruolo, tessera: u.tessera || null, tessere: tessereDi(u) };
   const req = new Request(url.origin + "/api/ticket", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(corpo) });
   const r = await (await ticket(req, env, me, url)).json();
-  if (r.errore) return `Richiesta non aperta: ${r.errore}\nRequest not opened: ${r.errore}`;
-  const tess = corpo.tipo === "tessera";
-  return `Richiesta n. ${r.id} aperta: l'amministratore la gestirà dal sito e riceverai l'esito.` + (tess ? ` La tessera ${corpo.tessera} è bloccata (il blocco sarà effettivo entro 5-15 minuti).` : "") +
-    `\nRequest no. ${r.id} opened: the administrator will handle it on the site and you will receive the outcome.` + (tess ? ` Card ${corpo.tessera} is blocked (the block takes effect within 5 to 15 minutes).` : "");
+  if (r.errore) return bot(u.lingua, "Richiesta non aperta: {errore}", { errore: r.errore });
+  return lingueMessaggio(u.lingua).map((l) => tm(l, "Richiesta n. {id} aperta: l'amministratore la gestirà dal sito e riceverai l'esito.", { id: r.id }) +
+    (corpo.tipo === "tessera" ? " " + tm(l, "La tessera {tag} è bloccata (il blocco sarà effettivo entro 5-15 minuti).", { tag: corpo.tessera }) : "")).join("\n");
 }
 
 // ---------------------------------------------------- price report by email
@@ -1175,13 +1181,23 @@ const durataIt = (ms) => { const m = Math.max(0, Math.round(ms / 60000)); return
 function mailMalf(titolo, righe) {
   return `<div style="font-family:Arial,sans-serif;max-width:520px"><h2 style="margin:0 0 16px">${esc(TITOLO)}</h2><p><b>${esc(titolo)}</b></p><p>${righe.map(esc).join("<br>")}</p>${NOREPLY}</div>`;
 }
-// email to the user in the standard format: Italian, then English
-function mailBil(titIt, righeIt, titEn, righeEn) {
-  return `<div style="font-family:Arial,sans-serif;max-width:520px"><h2 style="margin:0 0 16px">${esc(TITOLO)}</h2>` +
-    `<p style="color:#555;margin:0 0 8px"><b>Italiano</b> - ${esc(titIt)}</p><p>${righeIt.map(esc).join("<br>")}</p>` +
-    `<hr style="border:0;border-top:1px solid #ddd;margin:20px 0">` +
-    `<p style="color:#555;margin:0 0 8px"><b>English</b> - ${esc(titEn)}</p><p>${righeEn.map(esc).join("<br>")}</p>${NOREPLY}</div>`;
-}
+// ---- emails and messages to users in their language (lingue.js): their language, or Italian, then English
+const HR = `<hr style="border:0;border-top:1px solid #ddd;margin:20px 0">`;
+// corpo(l) returns the HTML of one language; extra goes after all the languages, before the footer
+const mailHtml = (lingue, corpo, extra = "") => `<div style="font-family:Arial,sans-serif;max-width:520px"><h2 style="margin:0 0 16px">${esc(TITOLO)}</h2>` +
+  lingue.map((l, i) => (i ? HR : "") + corpo(l)).join("") + extra + noreply(lingue) + `</div>`;
+const testata = (l, tit) => `<p style="color:#555;margin:0 0 8px"><b>${LINGUE[l]}</b>${tit ? " - " + esc(tit) : ""}</p>`;
+// standard format: per language a title and some lines. parti = [{ l, tit, righe }]
+const mailRighe = (parti) => mailHtml(parti.map((x) => x.l), (l) => { const x = parti.find((y) => y.l === l); return testata(l, x.tit) + `<p>${x.righe.map(esc).join("<br>")}</p>`; });
+const mailBil = (titIt, righeIt, titEn, righeEn) => mailRighe([{ l: "it", tit: titIt, righe: righeIt }, { l: "en", tit: titEn, righe: righeEn }]);
+// the parts of a message for a user: fn(l) returns { tit, righe } in language l
+const parti = (lingua, fn) => lingueMessaggio(lingua).map((l) => ({ l, ...fn(l) }));
+const oggetto = (p) => `${p.map((x) => x.tit).join(" / ")} - ${TITOLO}`;
+const righeMsg = (p) => p.map((x) => [x.tit + ".", ...x.righe]);   // Telegram: title and lines of each language
+const numL = (l, x, d = 2) => x === null || x === undefined ? "-" : x.toLocaleString(LOCALE[l] || "it-IT", { minimumFractionDigits: d, maximumFractionDigits: d });
+const soldiL = (l, x) => l === "en" ? VALUTA + numL(l, x) : numL(l, x) + " " + VALUTA;   // amount in currency units
+const meseAnno = (l, anno, mese) => new Date(Date.UTC(anno, mese - 1, 15)).toLocaleString(LOCALE[l], { month: "long", year: "numeric", timeZone: "UTC" });   // "octubre de 2026", "octobre 2026", "Oktober 2026"
+const linguaDi = async (env, nome) => { const r = await env.DB.prepare("SELECT lingua FROM utenti WHERE nome=?").bind(nome).first(); return r ? r.lingua : null; };
 // in-site notifications for the admin: alerts that do not go out by email (no recipient, failed email, "notification only" checks)
 async function notifica(env, titolo, dett, ts = Date.now()) {
   const l = await leggiMeta(env, "notifiche", []);
@@ -1195,7 +1211,7 @@ const energiaKwh = (m) => { const x = m && m.dati && m.dati["Energy.Active.Impor
 const AVVISI_DEF = { on: true, attesa: 10, sollecito: 60 };      // minutes after the end of the charge for the reminders (0 = none)
 async function leggiAvvisi(env) { return { ...AVVISI_DEF, ...(await leggiMeta(env, "avvisi_utenti_cfg", {})) }; }
 const durataBreve = (ms) => { const m = Math.max(0, Math.round(ms / 60000)), h = Math.floor(m / 60); return h ? h + " h " + (m % 60) + " min" : m + " min"; };
-const dataOra = (ms, en) => new Date(ms).toLocaleString(en ? "en-GB" : "it-IT", { timeZone: TZ, dateStyle: "short", timeStyle: "short" });
+const dataOra = (ms, l = "it") => new Date(ms).toLocaleString(LOCALE[l] || "it-IT", { timeZone: TZ, dateStyle: "short", timeStyle: "short" });
 async function avvisiUtenti(env, live, ora) {
   const cfg = await leggiAvvisi(env), pr = live.prese && live.prese["1"], tx = live.ultima_tx, st = pr ? pr.status : "";
   if (!cfg.on || !tx) return;
@@ -1223,34 +1239,34 @@ async function avvisiUtenti(env, live, ora) {
   const collegata = vista && /^(Charging|Finishing|SuspendedEV|SuspendedEVSE|Preparing)$/.test(st);   // car still plugged in
   const eLive = live.meter && live.meter.tx === tx.id ? energiaKwh(live.meter) : rec.e;   // open transaction: energy from the last meter sample of this charge
   const wh = tx.meter_ini == null ? null : tx.meter_fin != null ? tx.meter_fin - tx.meter_ini : (eLive != null ? Math.round(eLive * 1000) - tx.meter_ini : null);
-  const kwh = wh === null ? null : Math.max(0, wh) / 1000, kwhTxt = (en) => kwh === null ? "" : (en ? kwh.toFixed(1) : kwh.toFixed(1).replace(".", ","));
-  const stacca = ["L'auto risulta ancora collegata alla colonnina: scollega il cavo e sposta l'auto, per lasciare il posto agli altri utenti.",
-    "The car is still plugged in: unplug the cable and move the car, so others can use the charger."];
-  const invia = async (tit, titEn, rIt, rEn) => {           // email and, for those who enabled it, Telegram message
-    const m = await inviaMail(env, u.nome, `${tit} - ${TITOLO}`, mailBil(tit, rIt, titEn, rEn));
-    const x = await inviaMessaggio(env, u.nome, [tit + ".", ...rIt], [titEn + ".", ...rEn]);
+  const kwh = wh === null ? null : Math.max(0, wh) / 1000;
+  const stacca = "L'auto risulta ancora collegata alla colonnina: scollega il cavo e sposta l'auto, per lasciare il posto agli altri utenti.";
+  const invia = async (p) => {                              // email and, for those who enabled it, Telegram message
+    const m = await inviaMail(env, u.nome, oggetto(p), mailRighe(p));
+    const x = await inviaMessaggio(env, u.nome, ...righeMsg(p));
     return m === "inviata" || x.telegram === "inviato";
   };
   if (!rec.m0) {                                            // summary, once per charge
     if (aperta && ora - fine < 5 * 60000) { await salvaMeta(env, "avvisi_utenti", rec); return; }   // suspended or stalled counter: must last at least 5 minutes (short pauses of the car do not count)
     if ((kwh !== null && kwh < 0.05) || ora - fine > 3600e3) rec.m0 = ora;   // empty charge, or finished more than an hour ago (e.g. after a deploy): no summary
     else {
-      const rIt = [`La ricarica con la tessera ${tx.tag} è terminata.`, `Inizio: ${dataOra(tx.inizio)} - Fine: ${dataOra(fine)} - Durata: ${durataBreve(fine - tx.inizio)}.`];
-      const rEn = [`Charging with card ${tx.tag} has finished.`, `Start: ${dataOra(tx.inizio, true)} - End: ${dataOra(fine, true)} - Duration: ${durataBreve(fine - tx.inizio)}.`];
-      if (kwh !== null) { rIt.push(`Energia caricata: ${kwhTxt()} kWh.`); rEn.push(`Energy charged: ${kwhTxt(true)} kWh.`); }
-      const p = await env.DB.prepare("SELECT prezzo_cent, residuo_cent FROM prepagate WHERE tag=?").bind(tx.tag).first();
-      if (p && kwh !== null) {                              // prepaid card: cost of this charge and remaining credit (recomputed just before by controlloPrepagate)
-        const costo = eurC(Math.round(kwh * p.prezzo_cent)), res = eurC(Math.max(0, p.residuo_cent)), prezzo = eurC(p.prezzo_cent), en = (s) => s.replace(",", ".");
-        rIt.push(`Costo: ${costo} ${VALUTA} (${prezzo} ${VALUTA}/kWh). Credito residuo: ${res} ${VALUTA}.`);
-        rEn.push(`Cost: ${VALUTA}${en(costo)} (${VALUTA}${en(prezzo)}/kWh). Remaining credit: ${VALUTA}${en(res)}.`);
-      }
-      if (collegata) { rIt.push(stacca[0]); rEn.push(stacca[1]); } else { rIt.push("Grazie per aver liberato la colonnina."); rEn.push("Thank you for freeing the charger."); }
-      if (await invia("Ricarica terminata", "Charging finished", rIt, rEn)) rec.m0 = ora;
+      const pp = await env.DB.prepare("SELECT prezzo_cent, residuo_cent FROM prepagate WHERE tag=?").bind(tx.tag).first();
+      const msg = parti(u.lingua, (l) => {
+        const r = [tm(l, "La ricarica con la tessera {tag} è terminata.", { tag: tx.tag }),
+          tm(l, "Inizio: {inizio} - Fine: {fine} - Durata: {durata}.", { inizio: dataOra(tx.inizio, l), fine: dataOra(fine, l), durata: durataBreve(fine - tx.inizio) })];
+        if (kwh !== null) r.push(tm(l, "Energia caricata: {kwh} kWh.", { kwh: numL(l, kwh, 1) }));
+        if (pp && kwh !== null)                             // prepaid card: cost of this charge and remaining credit (recomputed just before by controlloPrepagate)
+          r.push(tm(l, "Costo: {costo} ({prezzo}/kWh). Credito residuo: {residuo}.",
+            { costo: soldiL(l, Math.round(kwh * pp.prezzo_cent) / 100), prezzo: soldiL(l, pp.prezzo_cent / 100), residuo: soldiL(l, Math.max(0, pp.residuo_cent) / 100) }));
+        r.push(tm(l, collegata ? stacca : "Grazie per aver liberato la colonnina."));
+        return { tit: tm(l, "Ricarica terminata"), righe: r };
+      });
+      if (await invia(msg)) rec.m0 = ora;
     }
   } else if (collegata) {                                   // reminders while the car stays plugged in
-    const prom = () => invia("Promemoria: ricarica terminata, auto ancora collegata", "Reminder: charging finished, car still plugged in",
-      [`La ricarica con la tessera ${tx.tag} è terminata alle ${new Date(fine).toLocaleTimeString("it-IT", { timeZone: TZ, timeStyle: "short" })}${kwh !== null ? " (" + kwhTxt() + " kWh)" : ""}.`, stacca[0]],
-      [`Charging with card ${tx.tag} finished at ${new Date(fine).toLocaleTimeString("en-GB", { timeZone: TZ, timeStyle: "short" })}${kwh !== null ? " (" + kwhTxt(true) + " kWh)" : ""}.`, stacca[1]]);
+    const prom = () => invia(parti(u.lingua, (l) => ({ tit: tm(l, "Promemoria: ricarica terminata, auto ancora collegata"),
+      righe: [tm(l, kwh !== null ? "La ricarica con la tessera {tag} è terminata alle {ora} ({kwh} kWh)." : "La ricarica con la tessera {tag} è terminata alle {ora}.",
+        { tag: tx.tag, ora: new Date(fine).toLocaleTimeString(LOCALE[l], { timeZone: TZ, timeStyle: "short" }), kwh: numL(l, kwh, 1) }), tm(l, stacca)] })));
     if (!rec.m1 && cfg.attesa > 0 && ora - fine >= cfg.attesa * 60000) { if (await prom()) rec.m1 = ora; }
     else if (rec.m1 && !rec.m2 && cfg.sollecito > 0 && ora - fine >= cfg.sollecito * 60000) { if (await prom()) rec.m2 = ora; }
   }
@@ -1576,8 +1592,7 @@ async function inviaMailUtentiPrezzo(env, anno, mese, origin) {
   if (!mailOk && !telegramAttivo()) return { inviate: 0, errori: 0 };
   const r = await reportMese(env, anno, mese, false);
   if (r.prezzo == null || !r.tessere.length) return { inviate: 0, errori: 0 };
-  const utenti = (await env.DB.prepare("SELECT nome, tessera, tessere_altre FROM utenti WHERE verifica_hash IS NULL").all()).results;
-  const E = (v) => num(v, 2) + " " + VALUTA;
+  const utenti = (await env.DB.prepare("SELECT nome, tessera, tessere_altre, lingua FROM utenti WHERE verifica_hash IS NULL").all()).results;
   let inviate = 0, errori = 0, saltate = 0, richieste = 1;   // 1 = the report to the recipients
   const coda = [];
   for (const u of utenti) {
@@ -1590,26 +1605,23 @@ async function inviaMailUtentiPrezzo(env, anno, mese, origin) {
       const d = (perTag[x.tag] ||= { n: 0, kwh: 0, imp: 0, iva: 0, tot: 0 });
       d.n += x.n; d.kwh += x.kwh; d.imp += x.imp || 0; d.iva += x.iva || 0; d.tot += x.tot || 0;
     }
-    const righe = (it) => Object.entries(perTag).map(([tag, d]) => it
-      ? `Tessera ${tag}: ${d.n} ${d.n === 1 ? "ricarica" : "ricariche"}, ${num(d.kwh)} kWh - imponibile ${E(d.imp)}, IVA ${E(d.iva)}, totale ${E(d.tot)}`
-      : `Card ${tag}: ${d.n} ${d.n === 1 ? "session" : "sessions"}, ${num(d.kwh)} kWh - net ${E(d.imp)}, VAT ${E(d.iva)}, total ${E(d.tot)}`);
     const tot = Object.values(perTag).reduce((s, d) => s + d.tot, 0);
-    const html = mailBil(`Le tue ricariche di ${r.titolo}`, [
-      `è stato inserito il prezzo dell'energia di ${r.titolo}: ${num(r.prezzo, 4)} ${VALUTA}/kWh, IVA ${num(r.iva_pct, 1)}%.`,
-      ...righe(true), `Totale: ${E(tot)}.`,
-      `Il dettaglio di ogni sessione è nell'area riservata, scheda "Le mie ricariche": ${origin}`],
-    `Your charging in ${r.titolo_en}`, [
-      `the energy price for ${r.titolo_en} has been entered: ${num(r.prezzo, 4)} ${VALUTA}/kWh, VAT ${num(r.iva_pct, 1)}%.`,
-      ...righe(false), `Total: ${E(tot)}.`,
-      `The detail of every session is in the reserved area, "My charging" tab: ${origin}`]);
+    const v = (l) => ({ mese: l === "it" ? r.titolo : l === "en" ? r.titolo_en : meseAnno(l, r.anno, r.mese), prezzo: numL(l, r.prezzo, 4), valuta: VALUTA,
+      iva: numL(l, r.iva_pct, 1), tot: soldiL(l, tot), url: origin });
+    const righe = (l) => Object.entries(perTag).map(([tag, d]) => tm(l, d.n === 1 ? "Tessera {tag}: 1 ricarica, {kwh} kWh - imponibile {imp}, IVA {iva}, totale {tot}"
+      : "Tessera {tag}: {n} ricariche, {kwh} kWh - imponibile {imp}, IVA {iva}, totale {tot}",
+      { tag, n: d.n, kwh: numL(l, d.kwh), imp: soldiL(l, d.imp), iva: soldiL(l, d.iva), tot: soldiL(l, d.tot) }));
+    const p = parti(u.lingua, (l) => ({ tit: tm(l, "Le tue ricariche di {mese}", v(l)), righe: [
+      tm(l, "è stato inserito il prezzo dell'energia di {mese}: {prezzo} {valuta}/kWh, IVA {iva}%.", v(l)), ...righe(l), tm(l, "Totale: {tot}.", v(l)),
+      tm(l, "Il dettaglio di ogni sessione è nell'area riservata, scheda \"Le mie ricariche\": {url}", v(l))] }));
     if (mailOk) {
-      const m = await inviaMail(env, u.nome, `Le tue ricariche ${r.titolo} / Your charging ${r.titolo_en} - ${TITOLO}`, html);
+      const m = await inviaMail(env, u.nome, oggetto(p), mailRighe(p));
       richieste++;
       if (m === "inviata") inviate++; else errori++;
     }
-    coda.push(await codaVoce(env, u.nome,
-      [`Le tue ricariche di ${r.titolo}: prezzo ${num(r.prezzo, 4)} ${VALUTA}/kWh, IVA ${num(r.iva_pct, 1)}%.`, ...righe(true), `Totale: ${E(tot)}. Dettaglio in "Le mie ricariche": ${origin}`],
-      [`Your charging in ${r.titolo_en}: price ${num(r.prezzo, 4)} ${VALUTA}/kWh, VAT ${num(r.iva_pct, 1)}%.`, ...righe(false), `Total: ${E(tot)}. Details in "My charging": ${origin}`]));
+    const tg = p.map((x) => [tm(x.l, "Le tue ricariche di {mese}: prezzo {prezzo} {valuta}/kWh, IVA {iva}%.", v(x.l)), ...righe(x.l),
+      tm(x.l, "Totale: {tot}. Dettaglio in \"Le mie ricariche\": {url}", v(x.l))]);
+    coda.push(await codaVoce(env, u.nome, tg[0], tg[1]));
   }
   if (errori || saltate) await notifica(env, "Mail del prezzo agli utenti", `${r.titolo}: ${inviate} inviate, ${errori} non riuscite, ${saltate} non inviate per il limite di ${MAX_RICHIESTE_UTENTI} richieste.`);
   if (coda.length) await accodaMessaggi(env, coda);
@@ -1641,7 +1653,7 @@ async function gestisciUtenti(env, me, b, origin) {
   const nome = String(b.nome || "").trim().toLowerCase();
   if (b.azione === "invita") {
     if (!EMAIL_OK.test(nome)) return json({ errore: "Indirizzo email non valido" }, 400);
-    const es = await env.DB.prepare("SELECT nome, ruolo FROM utenti WHERE nome=?").bind(nome).first();
+    const es = await env.DB.prepare("SELECT nome, ruolo, lingua FROM utenti WHERE nome=?").bind(nome).first();
     if (es && es.ruolo === "admin") return json({ errore: "Questo utente e' l'admin" }, 400);
     const tf = await leggiTessereForm(env, b);
     if (tf.errore) return json({ errore: tf.errore }, 400);
@@ -1658,28 +1670,15 @@ async function gestisciUtenti(env, me, b, origin) {
     }
     await env.DB.prepare("UPDATE utenti SET tessere_altre=? WHERE nome=?").bind(tf.altre.length ? JSON.stringify(tf.altre) : null, nome).run();
     const link = `${origin}/?invito=${tok}&e=${encodeURIComponent(nome)}`;
-    const cosaIt = tess
-      ? `potrai consultare le tue ricariche (tessera ${esc(tess)}, ${esc(nomeTess)})`
-      : "potrai consultare i report delle ricariche";
-    const cosaEn = tess
-      ? `you will be able to view your charges (card ${esc(tess)}, ${esc(nomeTess)})`
-      : "you will be able to view the charging reports";
-    const bottone = (t) => `<p><a href="${link}" style="display:inline-block;background:#0b6bcb;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${t}</a></p>`;
-    const mail = await inviaMail(env, nome, `Accesso a ${TITOLO} / Access to ${TITOLO}`,
-      `<div style="font-family:Arial,sans-serif;max-width:520px">` +
-      `<h2 style="margin:0 0 16px">${TITOLO}</h2>` +
-      `<p style="color:#555;margin:0 0 8px"><b>Italiano</b> - Ripartizione costi di ricarica</p>` +
-      `<p>Buongiorno,</p><p>è stato creato un accesso a tuo nome: ${cosaIt}.</p>` +
-      `<p>Per iniziare scegli la tua password dal pulsante qui sotto. Il link è personale, monouso e vale 48 ore.</p>` +
-      bottone("Scegli la password") +
-      `<p style="color:#555;font-size:13px">Il tuo nome utente è ${esc(nome)}.</p>` +
-      `<hr style="border:0;border-top:1px solid #ddd;margin:20px 0">` +
-      `<p style="color:#555;margin:0 0 8px"><b>English</b> - Charging cost split</p>` +
-      `<p>Hello,</p><p>An account has been created for you: ${cosaEn}.</p>` +
-      `<p>To get started, choose your password with the button below. The link is personal, single-use and valid for 48 hours.</p>` +
-      bottone("Choose your password") +
-      `<p style="color:#555;font-size:13px">Your username is ${esc(nome)}.</p>` +
-      `<p style="color:#555;font-size:13px">Se il pulsante non funziona copia questo indirizzo nel browser / If the button does not work, copy this address into your browser:<br>${link}</p>${NOREPLY}</div>`);
+    const lin = lingueMessaggio((es && es.lingua) || b.lang);   // the user's language if known, otherwise the administrator's
+    const bottone = (t) => `<p><a href="${link}" style="display:inline-block;background:#0b6bcb;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${esc(t)}</a></p>`;
+    const mail = await inviaMail(env, nome, lin.map((l) => tm(l, "Accesso a {titolo}", { titolo: TITOLO })).join(" / "),
+      mailHtml(lin, (l) => testata(l, tm(l, "Ripartizione costi di ricarica")) + `<p>${esc(tm(l, "Buongiorno,"))}</p>` +
+        `<p>${esc(tm(l, "è stato creato un accesso a tuo nome: {cosa}.", { cosa: tess ? tm(l, "potrai consultare le tue ricariche (tessera {tag}, {nome})", { tag: tess, nome: nomeTess })
+          : tm(l, "potrai consultare i report delle ricariche") }))}</p>` +
+        `<p>${esc(tm(l, "Per iniziare scegli la tua password dal pulsante qui sotto. Il link è personale, monouso e vale 48 ore."))}</p>` + bottone(tm(l, "Scegli la password")) +
+        `<p style="color:#555;font-size:13px">${esc(tm(l, "Il tuo nome utente è {nome}.", { nome }))}</p>`,
+      `<p style="color:#555;font-size:13px">${esc(lin.map((l) => tm(l, "Se il pulsante non funziona copia questo indirizzo nel browser")).join(" / "))}:<br>${link}</p>`));
     return json({ ok: true, mail, link: mail === "inviata" ? undefined : link });
   }
   if (b.azione === "permessi") {
@@ -1808,36 +1807,29 @@ async function prepagateCalcola(env, lista, st) {
 }
 async function utenteDiTessera(env, tag) {
   const like = `%"${tag}"%`;
-  return await env.DB.prepare("SELECT nome FROM utenti WHERE (tessera=? OR tessere_altre LIKE ?) AND ruolo!='admin' LIMIT 1").bind(tag, like).first()
-    || await env.DB.prepare("SELECT nome FROM utenti WHERE tessera=? OR tessere_altre LIKE ? LIMIT 1").bind(tag, like).first();
+  return await env.DB.prepare("SELECT nome, lingua FROM utenti WHERE (tessera=? OR tessere_altre LIKE ?) AND ruolo!='admin' LIMIT 1").bind(tag, like).first()
+    || await env.DB.prepare("SELECT nome, lingua FROM utenti WHERE tessera=? OR tessere_altre LIKE ? LIMIT 1").bind(tag, like).first();
 }
 // email and message to the card's user: credit used up (blocked), credit low, credit topped up
 async function avvisaPrepagata(env, c, tipo, extra = {}) {
   const u = await utenteDiTessera(env, c.tag);
   if (!u || !EMAIL_OK.test(u.nome)) return;
-  const kwh = (wh) => (wh / 1000).toFixed(1), pr = eurC(c.prezzo_cent), res = eurC(Math.max(0, c.residuo_cent)), en = (s) => s.replace(",", ".");
-  let titIt, rIt, titEn, rEn;
-  if (tipo === "esaurito") {
-    titIt = "Credito esaurito: tessera bloccata"; titEn = "Credit used up: card blocked";
-    rIt = [`Il credito della tessera ${c.tag} è esaurito: consumati ${kwh(c.consumato_wh).replace(".", ",")} kWh per ${eurC(c.consumato_cent)} € a ${pr} €/kWh.`,
-      `La tessera è stata bloccata${extra.fermata ? " e la ricarica in corso è stata fermata" : ""}. Per ricaricare il credito contatta l'amministratore.`];
-    rEn = [`The credit of card ${c.tag} is used up: ${kwh(c.consumato_wh)} kWh for €${en(eurC(c.consumato_cent))} at €${en(pr)}/kWh.`,
-      `The card has been blocked${extra.fermata ? " and the charge in progress has been stopped" : ""}. To top up the credit contact the administrator.`];
-  } else if (tipo === "basso") {
-    titIt = "Credito in esaurimento"; titEn = "Credit running low";
-    rIt = [`Sulla tessera ${c.tag} restano ${res} €, circa ${kwh(c.residuo_wh).replace(".", ",")} kWh a ${pr} €/kWh.`,
-      "Quando il credito arriva a zero la ricarica si ferma e la tessera viene bloccata. Per ricaricare il credito contatta l'amministratore."];
-    rEn = [`Card ${c.tag} has €${en(res)} left, about ${kwh(c.residuo_wh)} kWh at €${en(pr)}/kWh.`,
-      "When the credit reaches zero the charge stops and the card is blocked. To top up the credit contact the administrator."];
-  } else {
-    titIt = "Credito ricaricato"; titEn = "Credit topped up";
-    rIt = [`Sulla tessera ${c.tag} sono stati aggiunti ${eurC(extra.aggiunto || 0)} €: il credito disponibile è ${res} €, circa ${kwh(c.residuo_wh).replace(".", ",")} kWh a ${pr} €/kWh.`]
-      .concat(extra.sbloccata ? ["La tessera è di nuovo attiva."] : []);
-    rEn = [`€${en(eurC(extra.aggiunto || 0))} were added to card ${c.tag}: the available credit is €${en(res)}, about ${kwh(c.residuo_wh)} kWh at €${en(pr)}/kWh.`]
-      .concat(extra.sbloccata ? ["The card is active again."] : []);
-  }
-  await inviaMail(env, u.nome, `${titIt} - ${TITOLO}`, mailBil(titIt, rIt, titEn, rEn));
-  await inviaMessaggio(env, u.nome, [titIt + ".", ...rIt], [titEn + ".", ...rEn]);
+  const p = parti(u.lingua, (l) => {
+    const kwh = (wh) => numL(l, wh / 1000, 1), pr = soldiL(l, c.prezzo_cent / 100), res = soldiL(l, Math.max(0, c.residuo_cent) / 100);
+    if (tipo === "esaurito") return { tit: tm(l, "Credito esaurito: tessera bloccata"), righe: [
+      tm(l, "Il credito della tessera {tag} è esaurito: consumati {kwh} kWh per {costo} a {prezzo}/kWh.", { tag: c.tag, kwh: kwh(c.consumato_wh), costo: soldiL(l, c.consumato_cent / 100), prezzo: pr }),
+      tm(l, extra.fermata ? "La tessera è stata bloccata e la ricarica in corso è stata fermata. Per ricaricare il credito contatta l'amministratore."
+        : "La tessera è stata bloccata. Per ricaricare il credito contatta l'amministratore.")] };
+    if (tipo === "basso") return { tit: tm(l, "Credito in esaurimento"), righe: [
+      tm(l, "Sulla tessera {tag} restano {residuo}, circa {kwh} kWh a {prezzo}/kWh.", { tag: c.tag, residuo: res, kwh: kwh(c.residuo_wh), prezzo: pr }),
+      tm(l, "Quando il credito arriva a zero la ricarica si ferma e la tessera viene bloccata. Per ricaricare il credito contatta l'amministratore.")] };
+    return { tit: tm(l, "Credito ricaricato"), righe: [
+      tm(l, "Sulla tessera {tag} sono stati aggiunti {aggiunto}: il credito disponibile è {residuo}, circa {kwh} kWh a {prezzo}/kWh.",
+        { tag: c.tag, aggiunto: soldiL(l, (extra.aggiunto || 0) / 100), residuo: res, kwh: kwh(c.residuo_wh), prezzo: pr })]
+      .concat(extra.sbloccata ? [tm(l, "La tessera è di nuovo attiva.")] : []) };
+  });
+  await inviaMail(env, u.nome, oggetto(p), mailRighe(p));
+  await inviaMessaggio(env, u.nome, ...righeMsg(p));
 }
 // recompute all prepaid cards (or one): cache for the OCPP server, block/unblock, notices. opz.aggiunto = credit just added to opz.tag
 async function controlloPrepagate(env, ora, opz = {}) {
@@ -1977,11 +1969,11 @@ async function ticket(req, env, me, url) {
     const sb = await bloccaTessera(env, t.extra.tessera, false);
     await env.DB.prepare("UPDATE ticket SET extra=? WHERE id=?").bind(await cifra(env, JSON.stringify({ ...t.extra, blocco: "sbloccata" }), t.utente + "|ticket_extra"), r.id).run();
     if (EMAIL_OK.test(t.utente)) {
-      const att = sb === "in attesa", tg = t.extra.tessera;
-      await inviaMessaggio(env, t.utente, [`La tessera ${tg} è stata riattivata.` + (att ? " Lo sblocco sulla colonnina è in attesa." : "")], [`Card ${tg} has been reactivated.` + (att ? " Unblocking on the charger is pending." : "")]);
-      await inviaMail(env, t.utente, `Tessera ${tg} riattivata / Card ${tg} reactivated - ${TITOLO}`,
-        `<div style="font-family:Arial,sans-serif;max-width:520px"><h2 style="margin:0 0 16px">${TITOLO}</h2><p><b>Italiano</b></p><p>${esc(`La tessera ${tg} è stata riattivata a seguito della tua comunicazione di ritrovamento.` + (att ? " La riattivazione sulla colonnina sarà completata entro pochi minuti." : ""))}</p>` +
-        `<hr style="border:0;border-top:1px solid #ddd;margin:20px 0"><p><b>English</b></p><p>${esc(`Card ${tg} has been reactivated following your report that it was found.` + (att ? " Reactivation on the charger will be completed within a few minutes." : ""))}</p>${NOREPLY}</div>`);
+      const att = sb === "in attesa", tg = t.extra.tessera, lin = lingueMessaggio(await linguaDi(env, t.utente));
+      const frase = (l, k, k2) => tm(l, k, { tag: tg }) + (att ? " " + tm(l, k2) : "");
+      await inviaMessaggio(env, t.utente, ...lin.map((l) => [frase(l, "La tessera {tag} è stata riattivata.", "Lo sblocco sulla colonnina è in attesa.")]));
+      await inviaMail(env, t.utente, `${lin.map((l) => tm(l, "Tessera {tag} riattivata", { tag: tg })).join(" / ")} - ${TITOLO}`,
+        mailHtml(lin, (l) => testata(l) + `<p>${esc(frase(l, "La tessera {tag} è stata riattivata a seguito della tua comunicazione di ritrovamento.", "La riattivazione sulla colonnina sarà completata entro pochi minuti."))}</p>`));
     }
     return json({ ok: true, applicato: sb === "in attesa" ? "Sblocco in attesa: la colonnina non risponde, riprovo ogni 5 minuti." : "Tessera sbloccata." });
   }
@@ -1995,8 +1987,8 @@ async function ticket(req, env, me, url) {
     if (esito === "approvato" && !["tessera", "dati", "cancellazione", "nuova"].includes(t.tipo)) return json({ errore: "Questo tipo di richiesta si chiude, non si approva" }, 400);
     const nota = String(b.nota || "").trim().slice(0, 500);
     let applicato = "";
-    const dIt = [], dEn = [];                         // outcome details for the email to the user
-    const u = await env.DB.prepare("SELECT nome, ruolo, tessera, tessere_altre FROM utenti WHERE nome=?").bind(t.utente).first();
+    const det = [];                                   // outcome details for the email to the user: functions of the language
+    const u = await env.DB.prepare("SELECT nome, ruolo, tessera, tessere_altre, lingua FROM utenti WHERE nome=?").bind(t.utente).first();
     if (esito === "approvato") {
       if (!u) return json({ errore: "L'utente non esiste piu'" }, 404);
       if (u.ruolo === "admin") return json({ errore: "Non applicabile all'admin" }, 400);
@@ -2011,8 +2003,7 @@ async function ticket(req, env, me, url) {
         await env.DB.prepare("UPDATE utenti SET tessera=?, tessere_altre=? WHERE nome=?")
           .bind(tutte[0] || null, tutte.length > 1 ? JSON.stringify(tutte.slice(1)) : null, u.nome).run();
         applicato = `Tessera ${vecchia} scollegata` + (nuova ? `, abbinata ${nuova}` : "") + ".";
-        dIt.push(`La tessera ${vecchia} è stata bloccata` + (nuova ? ` e sostituita con la nuova tessera ${nuova}, già utilizzabile.` : " e scollegata dal tuo account."));
-        dEn.push(`Card ${vecchia} has been blocked` + (nuova ? ` and replaced with the new card ${nuova}, ready to use.` : " and unlinked from your account."));
+        det.push((l) => tm(l, nuova ? "La tessera {vecchia} è stata bloccata e sostituita con la nuova tessera {nuova}, già utilizzabile." : "La tessera {vecchia} è stata bloccata e scollegata dal tuo account.", { vecchia, nuova }));
       } else if (t.tipo === "nuova") {
         const nuova = String(b.nuova || "").toUpperCase();
         if (!nuova) return json({ errore: "Scegli la tessera da assegnare" }, 400);
@@ -2025,8 +2016,7 @@ async function ticket(req, env, me, url) {
         await env.DB.prepare("UPDATE utenti SET tessera=?, tessere_altre=? WHERE nome=?")
           .bind(tutte[0] || null, tutte.length > 1 ? JSON.stringify(tutte.slice(1)) : null, u.nome).run();
         applicato = `Tessera ${nuova} abbinata.`;
-        dIt.push(`La tessera ${nuova} è stata abbinata al tuo account ed è già utilizzabile.`);
-        dEn.push(`Card ${nuova} has been linked to your account and is ready to use.`);
+        det.push((l) => tm(l, "La tessera {tag} è stata abbinata al tuo account ed è già utilizzabile.", { tag: nuova }));
       } else if (t.tipo === "dati") {
         const x = t.extra || {}, set = {};
         if (x.nome) set.nome_proprio = x.nome;
@@ -2040,9 +2030,8 @@ async function ticket(req, env, me, url) {
         }
         applicato = campi.length ? "Dati aggiornati." : "Nessun dato da aggiornare: la richiesta era solo testuale.";
         if (campi.length) {
-          const et = { nome_proprio: ["nome", "first name"], cognome: ["cognome", "last name"], tel1: ["telefono", "phone"], tel2: ["secondo telefono", "second phone"] };
-          dIt.push("Abbiamo aggiornato i tuoi dati: " + campi.map((c) => et[c][0]).join(", ") + ".");
-          dEn.push("We have updated your details: " + campi.map((c) => et[c][1]).join(", ") + ".");
+          const et = { nome_proprio: "nome", cognome: "cognome", tel1: "telefono", tel2: "secondo telefono" };
+          det.push((l) => tm(l, "Abbiamo aggiornato i tuoi dati: {campi}.", { campi: campi.map((c) => tm(l, et[c])).join(", ") }));
         }
       }
     }
@@ -2052,21 +2041,17 @@ async function ticket(req, env, me, url) {
       extraNuovo = await cifra(env, JSON.stringify({ ...t.extra, blocco: "sbloccata" }), t.utente + "|ticket_extra");
       applicato = sb === "in attesa" ? `Tessera ${t.extra.tessera}: sblocco in attesa (colonnina non raggiungibile).` : `Tessera ${t.extra.tessera} sbloccata.`;
       const att = sb === "in attesa", tg = t.extra.tessera;
-      if (b.esito === "ritrovata") {
-        dIt.push(`La tessera ${tg} è stata riattivata a seguito della tua comunicazione di ritrovamento.` + (att ? " La riattivazione sulla colonnina sarà completata entro pochi minuti." : ""));
-        dEn.push(`Card ${tg} has been reactivated following your report that it was found.` + (att ? " Reactivation on the charger will be completed within a few minutes." : ""));
-      } else {
-        dIt.push(`La tessera ${tg} è stata riattivata: la richiesta di blocco non è stata accolta.` + (att ? " La riattivazione sulla colonnina sarà completata entro pochi minuti." : ""));
-        dEn.push(`Card ${tg} has been reactivated: the block request was not accepted.` + (att ? " Reactivation on the charger will be completed within a few minutes." : ""));
-      }
+      const k = b.esito === "ritrovata" ? "La tessera {tag} è stata riattivata a seguito della tua comunicazione di ritrovamento." : "La tessera {tag} è stata riattivata: la richiesta di blocco non è stata accolta.";
+      det.push((l) => tm(l, k, { tag: tg }) + (att ? " " + tm(l, "La riattivazione sulla colonnina sarà completata entro pochi minuti.") : ""));
     }
-    const intest = { approvato: "approvata", rifiutato: "rifiutata", chiuso: "chiusa" }[esito], intestEn = { approvato: "approved", rifiutato: "rejected", chiuso: "closed" }[esito];
+    const intest = { approvato: "approvata", rifiutato: "rifiutata", chiuso: "chiusa" }[esito];
     if (EMAIL_OK.test(t.utente)) {      // the user gets the outcome (before the account is possibly deleted)
-      const rIt = [`La tua richiesta n. ${r.id} (${TIPI_TICKET[t.tipo]}) è stata ${intest}.`, ...(t.tipo === "cancellazione" && esito === "approvato" ? ["L'utenza e i dati personali associati sono stati cancellati."] : []), ...dIt, ...(nota ? [`Nota dell'Amministratore: ${nota}`] : [])];
-      const rEn = [`Your request no. ${r.id} has been ${intestEn}.`, ...(t.tipo === "cancellazione" && esito === "approvato" ? ["Your account and the associated personal data have been deleted."] : []), ...dEn, ...(nota ? [`Administrator's note: ${nota}`] : [])];
-      await inviaMessaggio(env, t.utente, rIt, rEn);
-      await inviaMail(env, t.utente, `Richiesta n. ${r.id} ${intest} / Request no. ${r.id} ${intestEn} - ${TITOLO}`,
-        `<div style="font-family:Arial,sans-serif;max-width:520px"><h2 style="margin:0 0 16px">${TITOLO}</h2><p><b>Italiano</b></p><p>${rIt.map(esc).join("<br>")}</p><hr style="border:0;border-top:1px solid #ddd;margin:20px 0"><p><b>English</b></p><p>${rEn.map(esc).join("<br>")}</p>${NOREPLY}</div>`);
+      const p = parti(u && u.lingua, (l) => ({ tit: tm(l, "Richiesta n. {id} " + intest, { id: r.id }), righe: [
+        tm(l, "La tua richiesta n. {id} ({tipo}) è stata " + intest + ".", { id: r.id, tipo: tm(l, TIPI_TICKET[t.tipo] || t.tipo) }),
+        ...(t.tipo === "cancellazione" && esito === "approvato" ? [tm(l, "L'utenza e i dati personali associati sono stati cancellati.")] : []),
+        ...det.map((f) => f(l)), ...(nota ? [tm(l, "Nota dell'Amministratore: {nota}", { nota })] : [])] }));
+      await inviaMessaggio(env, t.utente, ...p.map((x) => x.righe));
+      await inviaMail(env, t.utente, oggetto(p), mailHtml(p.map((x) => x.l), (l) => testata(l) + `<p>${p.find((x) => x.l === l).righe.map(esc).join("<br>")}</p>`));
     }
     if (esito === "approvato" && t.tipo === "cancellazione") {
       await env.DB.prepare("DELETE FROM utenti WHERE nome=?").bind(t.utente).run();
@@ -2151,15 +2136,11 @@ const nomePulito = (t) => String(t || "").replace(/\s+/g, " ").trim().slice(0, 6
 // "Service activation" email: sent when a self-registered user has confirmed the email and has a card linked
 async function mailAttivazione(env, email, nomeP, tess, origin) {
   const t = await env.DB.prepare("SELECT nome FROM tessere WHERE tag=?").bind(tess).first();
-  const dett = `${esc(tess)}${t && t.nome ? " (" + esc(t.nome) + ")" : ""}`;
-  return await inviaMail(env, email, `Attivazione del servizio / Service activation - ${TITOLO}`,
-    `<div style="font-family:Arial,sans-serif;max-width:520px"><h2 style="margin:0 0 16px">${TITOLO}</h2>` +
-    `<p style="color:#555;margin:0 0 8px"><b>Italiano</b></p><p>Buongiorno ${esc(nomeP || "")},</p>` +
-    `<p><b>Utenza attivata: puoi accedere al sito.</b></p><p>La tessera ${dett} è stata abbinata al tuo account: ora puoi consultare le tue ricariche.</p>` +
-    `<p><a href="${origin}/" style="display:inline-block;background:#0b6bcb;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Accedi</a></p>` +
-    `<hr style="border:0;border-top:1px solid #ddd;margin:20px 0"><p style="color:#555;margin:0 0 8px"><b>English</b></p><p>Hello ${esc(nomeP || "")},</p>` +
-    `<p><b>Account activated: you can now sign in to the site.</b></p><p>Card ${dett} has been linked to your account: you can now view your charges.</p>` +
-    `<p><a href="${origin}/" style="display:inline-block;background:#0b6bcb;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Sign in</a></p>${NOREPLY}</div>`);
+  const dett = `${tess}${t && t.nome ? " (" + t.nome + ")" : ""}`, lin = lingueMessaggio(await linguaDi(env, email));
+  return await inviaMail(env, email, `${lin.map((l) => tm(l, "Attivazione del servizio")).join(" / ")} - ${TITOLO}`,
+    mailHtml(lin, (l) => testata(l) + `<p>${esc(tm(l, "Buongiorno {nome},", { nome: nomeP || "" }))}</p>` +
+      `<p><b>${esc(tm(l, "Utenza attivata: puoi accedere al sito."))}</b></p><p>${esc(tm(l, "La tessera {tag} è stata abbinata al tuo account: ora puoi consultare le tue ricariche.", { tag: dett }))}</p>` +
+      `<p><a href="${origin}/" style="display:inline-block;background:#0b6bcb;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${esc(tm(l, "Accedi"))}</a></p>`));
 }
 
 // ---------------------------------------------------- Cloudflare usage (admin only)
@@ -2260,7 +2241,7 @@ async function registrazione(req, env) {
   const email = String(b.email || "").trim().toLowerCase(), pw = String(b.password || "");
   const nomeP = nomePulito(b.nome), cognome = nomePulito(b.cognome);
   const t1 = String(b.tel1 || "").replace(/\s/g, ""), t2 = String(b.tel2 || "").replace(/\s/g, "");
-  const en = b.lang === "en";
+  const lingua = LINGUE[b.lang] ? b.lang : null, lin = lingueMessaggio(lingua);   // language of the registration page
   if (!nomeP || !cognome) return json({ errore: "Inserisci nome e cognome" }, 400);
   if (!EMAIL_OK.test(email) || email.length > 120) return json({ errore: "Indirizzo email non valido" }, 400);
   if (!PW_FORTE(pw)) return json({ errore: "La password non rispetta i requisiti" }, 400);
@@ -2274,10 +2255,8 @@ async function registrazione(req, env) {
   const es = await env.DB.prepare("SELECT nome, verifica_hash FROM utenti WHERE nome=?").bind(email).first();
   const ok = json({ ok: true });                                         // same answer if the address is already used: nobody can find out who is registered
   if (es && !es.verifica_hash) {
-    await inviaMail(env, email, `${TITOLO}`,
-      `<div style="font-family:Arial,sans-serif;max-width:520px"><h2 style="margin:0 0 16px">${TITOLO}</h2>` +
-      `<p><b>Italiano</b> - Per questo indirizzo esiste già un account: accedi dalla pagina iniziale. Se non ricordi la password chiedi all'Amministratore di reimpostarla.</p>` +
-      `<p><b>English</b> - An account already exists for this address: sign in from the home page. If you forgot the password, ask the Administrator to reset it.</p>${NOREPLY}</div>`);
+    await inviaMail(env, email, `${TITOLO}`, mailHtml(lin, (l) => testata(l) +
+      `<p>${esc(tm(l, "Per questo indirizzo esiste già un account: accedi dalla pagina iniziale. Se non ricordi la password chiedi all'Amministratore di reimpostarla."))}</p>`));
     return ok;
   }
   const tok = hex(crypto.getRandomValues(new Uint8Array(32)));
@@ -2288,24 +2267,22 @@ async function registrazione(req, env) {
   const exp = ora + DURATA_INVITO;
   const perm = leggiPermessi({});                                         // no permissions until the Administrator links the card
   if (es) {
-    await env.DB.prepare("UPDATE utenti SET salt=?, hash=?, cognome=?, nome_proprio=?, tel1=?, tel2=?, verifica_hash=?, verifica_exp=?, consensi=?, registrato_il=? WHERE nome=?")
-      .bind(c.salt, c.hash, cf.cognome, cf.nome_proprio, cf.tel1, cf.tel2, await sha256(tok), exp, cf.consensi, new Date().toISOString(), email).run();
+    await env.DB.prepare("UPDATE utenti SET salt=?, hash=?, cognome=?, nome_proprio=?, tel1=?, tel2=?, verifica_hash=?, verifica_exp=?, consensi=?, registrato_il=?, lingua=? WHERE nome=?")
+      .bind(c.salt, c.hash, cf.cognome, cf.nome_proprio, cf.tel1, cf.tel2, await sha256(tok), exp, cf.consensi, new Date().toISOString(), lingua, email).run();
   } else {
-    await env.DB.prepare("INSERT INTO utenti (nome, salt, hash, ruolo, permessi, cognome, nome_proprio, tel1, tel2, verifica_hash, verifica_exp, consensi, registrato_il) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .bind(email, c.salt, c.hash, "utente", perm, cf.cognome, cf.nome_proprio, cf.tel1, cf.tel2, await sha256(tok), exp, cf.consensi, new Date().toISOString()).run();
+    await env.DB.prepare("INSERT INTO utenti (nome, salt, hash, ruolo, permessi, cognome, nome_proprio, tel1, tel2, verifica_hash, verifica_exp, consensi, registrato_il, lingua) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(email, c.salt, c.hash, "utente", perm, cf.cognome, cf.nome_proprio, cf.tel1, cf.tel2, await sha256(tok), exp, cf.consensi, new Date().toISOString(), lingua).run();
   }
   const link = `${new URL(req.url).origin}/?verifica=${tok}&e=${encodeURIComponent(email)}`;
   const costo = costoTessera(await leggiConfig(env));
   const bottone = (t) => `<p><a href="${link}" style="display:inline-block;background:#0b6bcb;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${t}</a></p>`;
-  const mail = await inviaMail(env, email, `Conferma di registrazione / Registration confirmation - ${TITOLO}`,
-    `<div style="font-family:Arial,sans-serif;max-width:520px"><h2 style="margin:0 0 16px">${TITOLO}</h2>` +
-    `<p style="color:#555;margin:0 0 8px"><b>Italiano</b></p><p>Buongiorno ${esc(nomeP)},</p>` +
-    `<p>abbiamo ricevuto la tua registrazione. Per completarla conferma il tuo indirizzo email dal pulsante qui sotto (il link vale 48 ore). Dopo la conferma potrai accedere al sito. Se hai già la tessera, l'Amministratore la abbinerà al tuo account e riceverai la mail di <b>Attivazione del servizio</b>; se non ce l'hai, potrai richiederla dalla pagina Assistenza${costo ? " (costo " + costo + " una tantum: ti contatteremo per consegna e pagamento)" : ""}.</p>` +
-    bottone("Conferma l'indirizzo email") +
-    `<hr style="border:0;border-top:1px solid #ddd;margin:20px 0"><p style="color:#555;margin:0 0 8px"><b>English</b></p><p>Hello ${esc(nomeP)},</p>` +
-    `<p>we have received your registration. To complete it, confirm your email address with the button below (the link is valid for 48 hours). After confirming you can sign in. If you already have a card, the Administrator will link it to your account and you will receive the <b>Service activation</b> email; if you do not, you can request one from the Support page${costo ? " (one-off cost " + costo + ": we will contact you for delivery and payment)" : ""}.</p>` +
-    bottone("Confirm email address") +
-    `<p style="color:#555;font-size:13px">Se non hai chiesto tu la registrazione ignora questa mail / If you did not request this registration, ignore this email.<br>${link}</p>${NOREPLY}</div>`);
+  const mail = await inviaMail(env, email, `${lin.map((l) => tm(l, "Conferma di registrazione")).join(" / ")} - ${TITOLO}`,
+    mailHtml(lin, (l) => testata(l) + `<p>${esc(tm(l, "Buongiorno {nome},", { nome: nomeP }))}</p>` +
+      // the template holds <b>: the only variable part (the card cost, from Settings) is escaped
+      `<p>${tm(l, "abbiamo ricevuto la tua registrazione. Per completarla conferma il tuo indirizzo email dal pulsante qui sotto (il link vale 48 ore). Dopo la conferma potrai accedere al sito. Se hai già la tessera, l'Amministratore la abbinerà al tuo account e riceverai la mail di <b>Attivazione del servizio</b>; se non ce l'hai, potrai richiederla dalla pagina Assistenza{costo}.",
+        { costo: costo ? esc(tm(l, " (costo {costo} una tantum: ti contatteremo per consegna e pagamento)", { costo })) : "" })}</p>` +
+      bottone(esc(tm(l, "Conferma l'indirizzo email"))),
+    `<p style="color:#555;font-size:13px">${esc(lin.map((l) => tm(l, "Se non hai chiesto tu la registrazione ignora questa mail")).join(" / "))}.<br>${link}</p>`));
   if (mail !== "inviata") {
     await env.DB.prepare("DELETE FROM utenti WHERE nome=? AND verifica_hash IS NOT NULL").bind(email).run();
     return json({ errore: "Non sono riuscito a inviare la mail di conferma: riprova più tardi" }, 502);
@@ -2379,14 +2356,15 @@ async function recuperoPassword(req, env, url) {
   }
   if (await ipBloccato(env, req, "rec", 5)) return json({ errore: "Troppe richieste da questo indirizzo: riprova tra 10 minuti" }, 429);
   await ipErrore(env, req, "rec");
-  const u = EMAIL_OK.test(nome) ? await env.DB.prepare("SELECT nome, hash, verifica_hash, invito_exp FROM utenti WHERE nome=?").bind(nome).first() : null;
+  const u = EMAIL_OK.test(nome) ? await env.DB.prepare("SELECT nome, hash, verifica_hash, invito_exp, lingua FROM utenti WHERE nome=?").bind(nome).first() : null;
   if (u && u.hash && !u.verifica_hash && !(u.invito_exp && u.invito_exp > ora + 3000)) {   // at most one link every 10 minutes per account
     const tok = hex(crypto.getRandomValues(new Uint8Array(32)));
     await env.DB.prepare("UPDATE utenti SET invito_hash=?, invito_exp=? WHERE nome=?").bind(await sha256(tok), ora + 3600, nome).run();
     const link = `${url.origin}/?recupero=${tok}&e=${encodeURIComponent(nome)}`;
-    await inviaMail(env, nome, `Nuova password / New password - ${TITOLO}`, mailBil("Recupero della password",
-      ["Hai chiesto di scegliere una nuova password per l'accesso " + nome + ".", "Apri questo link entro un'ora:", link, "Se non sei stato tu, ignora questa mail: la password attuale resta valida."],
-      "Password recovery", ["You asked to choose a new password for the account " + nome + ".", "Open this link within one hour:", link, "If it was not you, ignore this email: your current password stays valid."]));
+    const lin = lingueMessaggio(u.lingua);
+    await inviaMail(env, nome, `${lin.map((l) => tm(l, "Nuova password")).join(" / ")} - ${TITOLO}`, mailRighe(lin.map((l) => ({ l, tit: tm(l, "Recupero della password"),
+      righe: [tm(l, "Hai chiesto di scegliere una nuova password per l'accesso {nome}.", { nome }), tm(l, "Apri questo link entro un'ora:"), link,
+        tm(l, "Se non sei stato tu, ignora questa mail: la password attuale resta valida.")] }))));
   }
   return json({ ok: true });
 }
@@ -2897,7 +2875,7 @@ export default {
       if (url.pathname.startsWith("/ocpp/")) return await ocppConnessione(req, env, url);
       const cfg = await leggiConfig(env);            // also sets TITOLO, TZ and VALUTA for this request
       if (await setupAperto(env)) {                  // first run: no administrator created yet
-        const html = (h) => new Response(pagina(h), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+        const html = (h) => new Response(pagina(h, req), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
         if (url.pathname === "/" && req.method === "GET") return html(P_SETUP);
         if (url.pathname === "/api/setup" && req.method === "GET") return json({ code_required: !!env.SETUP_CODE });
         if (url.pathname === "/api/setup" && req.method === "POST") return await eseguiSetup(req, env, cfg);
@@ -2918,16 +2896,16 @@ export default {
       if (url.pathname === "/api/registrazione" && req.method === "POST") return await registrazione(req, env);
       if (url.pathname === "/" && req.method === "GET" && q.get("verifica")) return await confermaEmail(url, env);
       if (url.pathname === "/" && req.method === "GET" && (q.get("invito") || q.get("recupero")))
-        return new Response(pagina(P_INVITO), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+        return new Response(pagina(P_INVITO, req), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       if (url.pathname.startsWith("/api/telegram/") && req.method === "POST") return await telegramWebhook(req, env, url);
       const me = await utenteCorrente(req, env);
       if (!me) {
         if (url.pathname === "/" && req.method === "GET")
-          return new Response(pagina(paginaLogin(env)), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+          return new Response(pagina(paginaLogin(env), req), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
         return json({ errore: "login" }, 401);
       }
       if (url.pathname === "/" && req.method === "GET" && q.get("completa"))
-        return new Response(pagina(P_INVITO), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+        return new Response(pagina(P_INVITO, req), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       if (me.ruolo !== "admin" && url.pathname.startsWith("/api/") && !["/api/me", "/api/profilo", "/api/logout", "/api/ingest"].includes(url.pathname)) {
         const pr = await env.DB.prepare("SELECT registrato_il, profilo_il FROM utenti WHERE nome=?").bind(me.nome).first();   // profile to complete: no data until it is filled in
         if (pr && !pr.registrato_il && !pr.profilo_il) return json({ errore: "Completa il profilo per continuare", completa: true }, 403);
@@ -3505,7 +3483,7 @@ export default {
         return r;
       }
       if (url.pathname === "/" && req.method === "GET") {
-        return new Response(pagina(P_HTML), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+        return new Response(pagina(P_HTML, req), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       }
       if (url.pathname === "/api/stato") return json(await statoArchivio(env));
       if (url.pathname === "/api/report") {
