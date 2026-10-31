@@ -932,7 +932,7 @@ async function salvaChi(env, forza) {
     const g = (tutti.giorni[oggi] ||= {});
     for (const [k, v] of Object.entries(chi)) { const d = (g[k] ||= { n: 0, q: 0, f: 0 }); d.n += v.n; d.q += v.q; d.f += v.f; }
     for (const k of Object.keys(tutti.giorni).sort().slice(0, -7)) delete tutti.giorni[k];   // 7 days
-    tutti.pesanti = (tutti.pesanti || []).concat(pes).slice(-20);
+    tutti.pesanti = (tutti.pesanti || []).concat(pes).filter((p) => p.ts > Date.now() - 7 * 864e5 && (p.q >= SOGLIA_PESANTE || p.f >= SOGLIA_PESANTE)).slice(-20);
     await salvaMeta(env, "consumo_chi", tutti);
   } catch (_) { /* accessory */ }
 }

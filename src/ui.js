@@ -276,7 +276,7 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
     <div class="bar"><label><input type="checkbox" id="avOn"> Avvisa chi ha caricato quando la ricarica è finita: riepilogo con orari e kWh e invito a scollegare l'auto</label></div>
     <div class="bar"><label>Promemoria dopo <input id="avAt" type="number" min="0" max="240" style="width:5em"> minuti se l'auto è ancora collegata (0 = nessuno)</label> <label>Secondo promemoria dopo <input id="avSo" type="number" min="0" max="1440" style="width:5em"> minuti (0 = nessuno)</label></div>
     <div class="bar"><button class="p" id="bAv">Salva</button> <span class="sub err" id="avEsito"></span></div>
-    <div class="sub">Il riepilogo (inizio, fine, durata, kWh; per le prepagate anche costo e credito residuo) parte appena la ricarica risulta finita: subito se il cavo è stato staccato o la tessera passata, dopo 5 minuti se la presa è in sospeso o il contatore è fermo ad auto piena. Arriva per mail all'utente registrato con la tessera usata e, per chi lo ha attivato, anche su Telegram. Il controllo gira ogni 5 minuti, quindi può arrivare fino a 5 minuti dopo. Nessun riepilogo per le ricariche a 0 kWh.</div>
+    <div class="sub">Il riepilogo (inizio, fine, durata, kWh; per le prepagate costo e credito) parte quando la ricarica finisce, per mail e, se attivato, su Telegram. Può arrivare fino a 5 minuti dopo; niente riepilogo a 0 kWh.</div>
   </div>
   <div class="card solo-adm hide">
     <h2>Destinatari malfunzionamenti</h2>
@@ -285,7 +285,7 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
     <div class="w"><table id="tabMal"></table></div>
     <div class="bar"><button class="p" id="bMal">Salva</button> <button id="bMalProva">Invia mail di prova</button> <span class="sub err" id="mEsito"></span></div>
     <div class="sub" id="mUlt"></div>
-    <div class="sub">Tutti i controlli partono disattivati: accendi quelli che vuoi. Il controllo gira ogni 5 minuti. Quando un problema dura più della soglia parte una mail con il tipo di malfunzionamento, e una seconda quando rientra; gli avvisi singoli (riavvio, IP, firmware) arrivano una volta sola. Il controllo della Conferma collegamento tiene conto del suo intervallo (soglia almeno il doppio).</div>
+    <div class="sub">I controlli partono spenti e girano ogni 5 minuti. Oltre la soglia arriva una mail, e un'altra quando il problema rientra; riavvio, IP e firmware avvisano una volta sola. La soglia della Conferma collegamento è almeno il doppio del suo intervallo.</div>
   </div>
   <div class="card solo-adm hide">
     <h2>Ultimi episodi</h2>
@@ -1133,7 +1133,17 @@ function badgeUtenti(){
     return L;
   });
 }
-var NOT_TUTTE=false;
+var NOT_TUTTE=false,EP_TUTTI=false,EP_D=[];
+// latest episodes: the ones in progress and at least the last 5; the rest behind "Mostra tutti"
+function disegnaEp(){
+  var ep=row([th(T("Controllo")),th(T("Dal")),th(T("Al")),th(T("Mail"))]);
+  if(!EP_D.length)ep+='<tr><td colspan="4" class="sub">'+T("Nessun episodio registrato")+"</td></tr>";
+  var vis=EP_TUTTI?EP_D:EP_D.filter(function(x,i){return i<5||(!x.evento&&!x.al)});
+  vis.forEach(function(x){ep+=row([td(esc(T(x.label))),td(oraTxt(x.dal)),td(x.evento?"-":x.al?oraTxt(x.al):T("in corso")),td(x.evento?(x.inviata?T("inviata"):T("non inviata")):"")])});
+  if(EP_D.length>vis.length||EP_TUTTI&&EP_D.length>5)ep+='<tr><td colspan="4"><a href="#" id="lEpTutti">'+(EP_TUTTI?T("Mostra meno"):T("Mostra tutti")+" ("+EP_D.length+")")+"</a></td></tr>";
+  $("tabEp").innerHTML=ep;
+  if($("lEpTutti"))$("lEpTutti").onclick=function(ev){ev.preventDefault();EP_TUTTI=!EP_TUTTI;disegnaEp()};
+}
 function caricaNot(letti){
   return (letti?post("/api/notifiche",{}):api("/api/notifiche")).then(function(d){
     if(!d||d.errore)return;
@@ -1156,9 +1166,9 @@ function caricaCf(){
       $("tabMsg").innerHTML=K.length?M2:"";$("msgNota").textContent=(K.length?"":T("Nessun invio contato finora. "))+T("Resend gratuito: 3.000 mail al mese e 100 al giorno (tra parentesi la quota mensile); Telegram non ha limiti di costo.")+(d.coda?" "+T("Messaggi in coda: ")+d.coda:"")}
     if(d&&d.chi){var G=d.chi.giorni||{},gg=Object.keys(G).sort().reverse().slice(0,2),C=row([th(T("Giorno (UTC)")),th(T("Pagina / API")),th(T("Chiamate"),1),th(T("Query D1"),1),th(T("Chiamate in uscita"),1)]);
       gg.forEach(function(g){Object.keys(G[g]).sort(function(a,b){return G[g][b].q-G[g][a].q}).forEach(function(k){var x=G[g][k];C+=row([td(esc(g.split("-").reverse().join("-"))),td(esc(k)),td(x.n.toLocaleString(LOC),1),td(x.q.toLocaleString(LOC),1),td(x.f.toLocaleString(LOC),1)])})});
-      var PP=(d.chi.pesanti||[]).slice().reverse();
+      var PP=(d.chi.pesanti||[]).filter(function(p){return p.ts>Date.now()-2*864e5&&(p.q>=35||p.f>=35)}).reverse();
       $("tabChi").innerHTML=gg.length?C:"";
-      $("chiNota").textContent=(gg.length?"":T("Nessun dato finora. "))+T("Conteggio del sito dalla versione 2.8.0: per ogni pagina o API, chiamate, query D1 e chiamate in uscita (mail, messaggi, colonnina), oggi e ieri (UTC). Le query del server OCPP non sono incluse. Per singola richiesta il piano gratuito ammette 50 query D1 e 50 chiamate in uscita.")+(PP.length?" "+T("Richieste pesanti (oltre 35): ")+PP.map(function(p){return oraTxt(p.ts)+" "+p.chiave+" ("+p.q+" query, "+p.f+" "+T("chiamate")+")"}).join("; "):"")}
+      $("chiNota").textContent=(gg.length?"":T("Nessun dato finora. "))+T("Oggi e ieri (UTC), senza il server OCPP. Limite per richiesta: 50 query D1 e 50 chiamate in uscita.")+(PP.length?" "+T("Richieste pesanti (35 o più) negli ultimi 2 giorni: ")+PP.length+" ("+T("ultima")+" "+oraTxt(PP[0].ts)+" "+PP[0].chiave+", "+PP[0].q+" query, "+PP[0].f+" "+T("chiamate")+").":"")}
     if(!d||d.errore&&!d.configurato)return;
     if(!d.configurato){$("tabCf").innerHTML="";$("cfNota").textContent=T("Per vedere i consumi serve un token Cloudflare con il permesso Account Analytics: Read (secret CF_API_TOKEN) e CF_ACCOUNT_ID in wrangler.toml.");return}
     if(d.errore){$("tabCf").innerHTML="";$("cfNota").textContent=d.errore;return}
@@ -1191,10 +1201,7 @@ function disegnaMal(d){
       h+=row([td('<input type="checkbox" data-m="'+r.id+'"'+(r.mail?" checked":"")+">"),td('<input type="checkbox" data-n="'+r.id+'"'+(r.not?" checked":"")+">"),td(esc(T(r.label))),td(v),'<td data-s="'+r.id+'">'+esc(t)+'</td>'])});
     $("tabMal").innerHTML=h}
   if(d.avvisi&&!AVDIRTY){$("avOn").checked=!!d.avvisi.on;$("avAt").value=d.avvisi.attesa;$("avSo").value=d.avvisi.sollecito}
-  var ep=row([th(T("Controllo")),th(T("Dal")),th(T("Al")),th(T("Mail"))]);
-  if(!d.storico.length)ep+='<tr><td colspan="4" class="sub">'+T("Nessun episodio registrato")+"</td></tr>";
-  d.storico.forEach(function(x){ep+=row([td(esc(T(x.label))),td(oraTxt(x.dal)),td(x.evento?"-":x.al?oraTxt(x.al):T("in corso")),td(x.evento?(x.inviata?T("inviata"):T("non inviata")):"")])});
-  $("tabEp").innerHTML=ep;
+  EP_D=d.storico;disegnaEp();
   $("mUlt").textContent=d.ultimo?T("Ultimo controllo: ")+oraTxt(d.ultimo):T("Il controllo non è ancora partito")}
 function leggiMal(){
   var rg={};document.querySelectorAll("#tabMal input[data-m]").forEach(function(c){var id=c.getAttribute("data-m");var vi=document.querySelector('#tabMal input[data-v="'+id+'"]');var cn=document.querySelector('#tabMal input[data-n="'+id+'"]');rg[id]={mail:c.checked,not:!!(cn&&cn.checked),valore:vi?vi.value:0}});
