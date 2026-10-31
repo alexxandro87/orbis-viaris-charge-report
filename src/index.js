@@ -1129,7 +1129,7 @@ const num = (x, d = 2) => x === null || x === undefined ? "-" : x.toLocaleString
 // "evento": single alert, no threshold. The check runs from the cron "*/5 * * * *": thresholds under 5 minutes mean the next run.
 const MALF = {
   connessione: { g: "Connessione", label: "Colonnina non collegata al server", tipo: "durata", def: 10, min: 5, max: 1440, um: 1, unita: "minuti" },
-  battito: { g: "Connessione", label: "Colonnina collegata ma senza messaggi (nemmeno il battito)", tipo: "durata", def: 15, min: 5, max: 1440, um: 1, unita: "minuti" },
+  battito: { g: "Connessione", label: "Colonnina collegata ma senza messaggi (nemmeno la Conferma collegamento)", tipo: "durata", def: 15, min: 5, max: 1440, um: 1, unita: "minuti" },
   riconnessioni: { g: "Connessione", label: "Riconnessioni troppo frequenti", tipo: "valore", def: 5, min: 2, max: 50, um: 1, unita: "cadute in un'ora" },
   riavvio: { g: "Connessione", label: "Riavvio imprevisto della colonnina", tipo: "evento" },
   orologio: { g: "Connessione", label: "Orologio della colonnina sfasato", tipo: "valore", def: 5, min: 1, max: 120, um: 1, unita: "minuti di differenza" },
