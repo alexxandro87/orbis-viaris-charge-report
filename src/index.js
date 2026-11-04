@@ -714,7 +714,7 @@ const msgErrore = (e) => (e instanceof Error ? e.message : String(e)).slice(0, 3
 // -------------------------------------------------------------- users and sessions
 const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 // permissions that can be given to users (the admin always has everything)
-const PERMESSI = ["report", "storico", "sessioni", "prezzo", "stampa", "scarica", "app", "live"];
+const PERMESSI = ["report", "storico", "sessioni", "prezzo", "stampa", "scarica", "app", "live", "prepagate"];   // "prepagate": prepaid cards tab, read only (off by default)
 const PERMESSI_DEFAULT = { report: 1, storico: 1, sessioni: 1, stampa: 1 };
 const DURATA_INVITO = 48 * 3600;
 function permessiDi(u) {
@@ -1210,6 +1210,48 @@ const energiaKwh = (m) => { const x = m && m.dati && m.dati["Energy.Active.Impor
 // ------------------------------------------------ notices to users: summary at the end of the charge, then reminders while the car stays plugged in
 const AVVISI_DEF = { on: true, attesa: 10, sollecito: 60 };      // minutes after the end of the charge for the reminders (0 = none)
 async function leggiAvvisi(env) { return { ...AVVISI_DEF, ...(await leggiMeta(env, "avvisi_utenti_cfg", {})) }; }
+// ------------------------------------------------ automatic restart from the panel when the charger stays disconnected from the OCPP server
+// With an unstable connection the charger's OCPP client sometimes stops retrying until it restarts; without a connection the site
+// cannot send the OCPP Reset, but the charger's web panel often still answers: the simple restart is sent from there
+// (same as the panel button, type "hard"). Never the factory resets (factoryresetsoft / factoryresethard). Orbis panel only.
+const RIAVVIO_DEF = { on: false, min: 15, max: 3 };              // off by default; minutes disconnected; at most this many restarts in 24 hours
+async function leggiRiavvio(env) { return { ...RIAVVIO_DEF, ...(await leggiMeta(env, "riavvio_auto_cfg", {})) }; }
+async function riavvioAuto(env, live, ultimoIn, ora) {
+  const cfg = await leggiRiavvio(env), st = await leggiMeta(env, "riavvio_auto_stato", { tentativi: [] });
+  const prima = JSON.stringify(st);
+  st.tentativi = (st.tentativi || []).filter((t) => t > ora - 86400e3);
+  if (live.connessa) { st.giu_da = null; st.avvisato = false; }
+  else st.giu_da = st.giu_da || ultimoIn || ora;              // disconnected since (last message received, if known)
+  const da = live.connessa ? null : Math.min(st.giu_da, ultimoIn || st.giu_da);
+  const salva = async () => { if (JSON.stringify(st) !== prima) await salvaMeta(env, "riavvio_auto_stato", st); };
+  if (!cfg.on || da == null || ora - da < cfg.min * 60000 || live.transazione_aperta) return salva();
+  if (st.tentativi.length && ora - st.tentativi[st.tentativi.length - 1] < 3600e3) return salva();   // at most one an hour
+  if (st.tentativi.length >= cfg.max) {
+    if (!st.avvisato) { st.avvisato = true; await notifica(env, "Riavvio automatico della colonnina", "Colonnina ancora scollegata dal server da " + durataIt(ora - da) + ": raggiunto il massimo di " + cfg.max + " riavvii in 24 ore, nessun altro tentativo", ora); }
+    return salva();
+  }
+  st.tentativi.push(ora);                                      // a failed attempt counts too
+  let esito;
+  try {
+    const c = await colonninaConfig(env);
+    if (c.status_path) {
+      const ev = JSON.parse(await conTimeout(urlCompleto(c, c.status_path), c, 15000));
+      if (ev[0] && ev[0].stat && ev[0].stat.state !== 1) esito = "non fatto, presa occupata";   // like the names: only when the charger is free
+    }
+    if (!esito) {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 15000);
+      try {
+        const r = await fetch(urlCompleto(c, "/reset/sys"), { method: "POST", headers: { ...intestazioni(c), "content-type": "application/json" }, body: JSON.stringify({ timeout: 1000, type: "hard" }), signal: ctl.signal });
+        esito = r.ok ? "riavvio inviato dal pannello" : "il pannello ha risposto HTTP " + r.status;
+      } finally { clearTimeout(t); }
+    }
+  } catch (e) { esito = "pannello non raggiungibile (" + msgErrore(e) + ")"; }
+  st.ultimo = { ts: ora, esito };
+  await salva();
+  const dett = "Colonnina scollegata dal server da " + durataIt(ora - da) + ": " + esito + " (tentativo " + st.tentativi.length + " di " + cfg.max + " in 24 ore)";
+  await notifica(env, "Riavvio automatico della colonnina", dett, ora);
+  try { await env.COLONNINA.get(env.COLONNINA.idFromName("colonnina")).fetch("https://do/log", { method: "POST", body: JSON.stringify({ testo: "Riavvio automatico: " + dett }) }); } catch (_) { /* optional */ }
+}
 const durataBreve = (ms) => { const m = Math.max(0, Math.round(ms / 60000)), h = Math.floor(m / 60); return h ? h + " h " + (m % 60) + " min" : m + " min"; };
 const dataOra = (ms, l = "it") => new Date(ms).toLocaleString(LOCALE[l] || "it-IT", { timeZone: TZ, dateStyle: "short", timeStyle: "short" });
 async function avvisiUtenti(env, live, ora) {
@@ -1313,6 +1355,7 @@ async function verificaMalfunzionamenti(env, ora = Date.now()) {
     cond.energia = { da: ferma ? (st.da || ora) : (nuova ? null : (st.da || null)), extra: { e: kwhTot, ts: mts }, dett: "Contatore fermo a " + kwhTot.toFixed(2) + " kWh durante la ricarica della tessera " + tx.tag };
   } else cond.energia = { da: null };
   // measure thresholds (fire at once)
+  try { await riavvioAuto(env, live, ultimoIn, ora); } catch (_) { /* retry at the next run */ }
   const ora1h = ora - 3600e3, cadute = (live.cadute || []).filter((t) => t > ora1h).length;
   cond.riconnessioni = { da: cadute >= v("riconnessioni") ? prima("riconnessioni") : null, dett: cadute + " cadute della connessione nell'ultima ora" };
   const sf = live.sfasa && ora - live.sfasa.ts < 86400e3 ? live.sfasa.ms : null;
@@ -2417,6 +2460,7 @@ export class Colonnina {
           if (!this.get("lista_on")) return json({ ok: false });
           await this.state.storage.setAlarm(Date.now() + 30000); return json({ ok: true });
         }
+        if (new URL(req.url).pathname === "/log") { const b = await req.json(); this.log("sys", String(b.testo || "").slice(0, 400)); return json({ ok: true }); }   // line from the Worker (automatic restart)
         if (new URL(req.url).pathname === "/comando") { const b = await req.json(); return json(await this.inviaComando(b.azione, b.payload)); }   // admin command, waits for the answer
         if (!this.get("lista_on")) return json({ errore: "Invio della lista tessere disattivato: attivalo prima dalla scheda OCPP" }, 400);
         await this.avviaComandi(); return json({ ok: true });                                                                                          // "sync": sends config and card list again
@@ -3186,6 +3230,13 @@ export default {
             await salvaMeta(env, "avvisi_utenti_cfg", { on: !!b.on, attesa: at, sollecito: so });
             return json({ ok: true, avvisi: await leggiAvvisi(env) });
           }
+          if (b.azione === "riavvio") {
+            const mi = Math.round(Number(b.min)), mx = Math.round(Number(b.max));
+            if (!(mi >= 10 && mi <= 240)) return json({ errore: "Minuti non validi: da 10 a 240" }, 400);
+            if (!(mx >= 1 && mx <= 6)) return json({ errore: "Riavvii al giorno non validi: da 1 a 6" }, 400);
+            await salvaMeta(env, "riavvio_auto_cfg", { on: !!b.on, min: mi, max: mx });
+            return json({ ok: true, riavvio: await leggiRiavvio(env) });
+          }
           const a = listaEmail(b.a), cc = listaEmail(b.cc);
           if (![...a, ...cc].every((x) => EMAIL_OK.test(x))) return json({ errore: "Indirizzo email non valido" }, 400);
           const regole = {};
@@ -3201,7 +3252,9 @@ export default {
         }
         const c = await leggiMalf(env), stato = await leggiMeta(env, "malfunzionamenti_stato", {}), storico = await leggiMeta(env, "malfunzionamenti_storico", []);
         delete stato._ext;
+        const ra = await leggiMeta(env, "riavvio_auto_stato", {});
         return json({ a: c.a, cc: c.cc, stato, avvisi: await leggiAvvisi(env), ultimo: await leggiMeta(env, "monitor_ultimo", null),
+          riavvio: { ...(await leggiRiavvio(env)), ultimo: ra.ultimo || null, n24: (ra.tentativi || []).filter((t) => t > Date.now() - 86400e3).length },
           regole: Object.entries(MALF).map(([id, d]) => ({ id, g: d.g, label: d.label, tipo: d.tipo, on: c.regole[id].on, mail: c.regole[id].mail, not: c.regole[id].not, unita: d.unita || "", valore: d.tipo === "evento" ? null : c.regole[id].min / d.um, da: d.tipo === "evento" ? null : d.min / d.um, a: d.tipo === "evento" ? null : d.max / d.um })),
           storico: storico.slice(0, 40).map((x) => ({ ...x, label: MALF[x.id] ? MALF[x.id].label : x.id })) });
       }
@@ -3396,8 +3449,8 @@ export default {
         } catch (e) { return json({ errore: "Esiste gia' un periodo con quella data" }, 400); }
         return json({ ok: true });
       }
-      if (url.pathname === "/api/prepagate") {             // prepaid cards (admin only): list with credit and usage, activation, credit, price, threshold, removal
-        if (me.ruolo !== "admin") return json({ errore: "non autorizzato" }, 403);
+      if (url.pathname === "/api/prepagate") {             // prepaid cards: list with credit and usage (admin or "prepagate" permission); activation, credit, price, threshold, removal admin only
+        if (me.ruolo !== "admin" && !(req.method === "GET" && me.perm && me.perm.prepagate)) return json({ errore: "non autorizzato" }, 403);
         const cent = (v) => Math.round(parseFloat(String(v ?? "").replace(",", ".")) * 100), ora = Date.now();
         if (req.method === "POST") {
           const b = await req.json(), tag = String(b.tag || "").toUpperCase().trim();

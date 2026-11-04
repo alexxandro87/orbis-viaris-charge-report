@@ -168,6 +168,14 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
     <div class="sub">I comandi di lettura non cambiano nulla. RemoteStopTransaction agisce sulla colonnina e non è ancora stato provato su quella reale: chiede conferma prima dell'invio. La risposta arriva dalla colonnina stessa, entro 15 secondi.</div>
   </div>
   <div class="card">
+    <h2>Riavvio automatico</h2>
+    <div class="bar"><label><input type="checkbox" id="raOn"> Riavvia la colonnina dal suo pannello quando resta scollegata dal server</label></div>
+    <div class="bar"><label>Dopo <input id="raMin" type="number" min="10" max="240" style="width:5em"> minuti di scollegamento</label> <label>Al massimo <input id="raMax" type="number" min="1" max="6" style="width:4em"> riavvii in 24 ore</label></div>
+    <div class="bar"><button class="p" id="bRa">Salva</button> <span class="sub err" id="raEsito"></span></div>
+    <div class="sub" id="raUlt"></div>
+    <div class="sub">Riavvio semplice, come il pulsante del pannello: non cancella nulla. Parte solo con la presa libera e senza ricariche aperte, al massimo una volta all'ora. Funziona se il pannello risponde anche quando l'OCPP è giù; ogni tentativo lascia una notifica e una riga nel registro OCPP.</div>
+  </div>
+  <div class="card">
     <h2>Parametri avanzati della colonnina</h2>
     <div id="oPar"></div>
     <div class="sub">Il server manda alla colonnina solo i valori che cambi, subito o al primo messaggio utile, e li rimanda a ogni riavvio. Per vedere i valori letti dalla colonnina usa GetConfiguration.</div>
@@ -244,13 +252,13 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
     <div class="w"><table id="tabPre"></table></div>
     <div class="sub">Il prezzo serve solo a scalare il credito e lo decidi tu, tessera per tessera. Il consumo conta le ricariche dalla data di attivazione, compresa quella in corso. A credito esaurito la tessera viene bloccata sulla colonnina e la ricarica in corso viene fermata da remoto; l'utente riceve mail e messaggio. Aggiungere credito sblocca la tessera. Tocca una riga per sceglierla.</div>
   </div>
-  <div class="card">
+  <div class="card solo-adm hide">
     <h2>Aggiungi credito o modifica</h2>
     <div class="bar" style="flex-wrap:wrap"><label>Tessera <select id="prSel"></select></label> <label>Importo da aggiungere <input id="prImp" type="number" min="0" step="0.01" style="width:6em"> €</label> <label>Prezzo €/kWh <input id="prPr" type="number" min="0.01" step="0.01" style="width:6em"></label> <label>Avviso sotto <input id="prSo" type="number" min="0" step="1" style="width:5em"> €</label></div>
     <div class="bar"><button class="p" id="bPrSalva">Salva</button> <button id="bPrTogli">Torna a consumo</button> <span class="sub err" id="prEsito"></span></div>
     <div class="sub" id="prStor"></div>
   </div>
-  <div class="card">
+  <div class="card solo-adm hide">
     <h2>Rendi prepagata una tessera esistente</h2>
     <div class="bar" style="flex-wrap:wrap"><label>Tessera <select id="prNuova"></select></label> <label>Prezzo €/kWh <input id="prNPr" type="number" min="0.01" step="0.01" placeholder="0,40" style="width:6em"></label> <label>Credito iniziale <input id="prNCr" type="number" min="0" step="0.01" style="width:6em"> €</label> <label>Avviso sotto <input id="prNSo" type="number" min="0" step="1" value="5" style="width:5em"> €</label> <button class="p" id="bPrNuova">Attiva prepagata</button> <span class="sub err" id="prNEsito"></span></div>
     <div class="sub">Tessere già presenti sulla colonnina. Da questo momento le loro ricariche scalano il credito. Le tessere nuove si aggiungono dalla scheda Utenti/Card scegliendo il tipo «Prepagata».</div>
@@ -339,6 +347,7 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
       <label><input type="checkbox" data-p="scarica"> Scaricare dalla colonnina e importare CSV</label>
       <label><input type="checkbox" data-p="app"> Vedere le ricariche avviate da app</label>
       <label><input type="checkbox" data-p="live"> Vedere i dettagli della ricarica in corso (potenza, kWh...)</label>
+      <label><input type="checkbox" data-p="prepagate"> Vedere le tessere prepagate (sola lettura)</label>
     </div>
     <div class="bar">
       <button class="p" id="bUInvita">Invia invito</button>
@@ -515,7 +524,7 @@ document.querySelectorAll("nav button").forEach(function(b){b.onclick=function()
   window.scrollTo(0,0);
   document.querySelectorAll("nav button").forEach(function(x){x.classList.toggle("on",x===b)});
   ["t1","t2","t3","t4","t5","t6","t8","t9","t10","t11","t12","t13"].forEach(function(t){$(t).classList.toggle("hide",t!==b.dataset.t)});
-  if(b.dataset.t==="t2")caricaStorico();if(b.dataset.t==="t3")caricaSessioni();if(b.dataset.t==="t4"){caricaUtenti();caricaRfid()}if(b.dataset.t==="t13")caricaPrepagate();if(b.dataset.t==="t5")caricaMie();if(b.dataset.t==="t10")caricaProfilo();if(b.dataset.t==="t11")caricaTicket();if(b.dataset.t==="t9"){caricaLive();if(MONADM){caricaMal();caricaCf();caricaNot()}}if(b.dataset.t==="t8"){ocStato();caricaOcpp()}if(b.dataset.t==="t6"){caricaDest();caricaConfig();caricaTesti();caricaArchivio()}
+  if(b.dataset.t==="t2")caricaStorico();if(b.dataset.t==="t3")caricaSessioni();if(b.dataset.t==="t4"){caricaUtenti();caricaRfid()}if(b.dataset.t==="t13")caricaPrepagate();if(b.dataset.t==="t5")caricaMie();if(b.dataset.t==="t10")caricaProfilo();if(b.dataset.t==="t11")caricaTicket();if(b.dataset.t==="t9"){caricaLive();if(MONADM){caricaMal();caricaCf();caricaNot()}}if(b.dataset.t==="t8"){ocStato();caricaRa();caricaOcpp()}if(b.dataset.t==="t6"){caricaDest();caricaConfig();caricaTesti();caricaArchivio()}
 }});
 
 function caricaStato(){return api("/api/stato").then(function(s){
@@ -1208,6 +1217,13 @@ function leggiMal(){
   return {a:$("mA").value,cc:$("mCc").value,regole:rg}}
 ["tabMal","mA","mCc"].forEach(function(id){var e=$(id);e.addEventListener("input",function(){MALDIRTY=true});e.addEventListener("change",function(){MALDIRTY=true})});
 ["avOn","avAt","avSo"].forEach(function(id){$(id).addEventListener("input",function(){AVDIRTY=true});$(id).addEventListener("change",function(){AVDIRTY=true})});
+var RADIRTY=false;
+function caricaRa(){return api("/api/malfunzionamenti").then(function(d){if(!d||!d.riavvio)return;var x=d.riavvio;
+  if(!RADIRTY){$("raOn").checked=!!x.on;$("raMin").value=x.min;$("raMax").value=x.max}
+  $("raUlt").textContent=x.ultimo?T("Ultimo tentativo: ")+oraTxt(x.ultimo.ts)+" - "+T(x.ultimo.esito)+" ("+x.n24+" "+T("nelle ultime 24 ore")+")":T("Nessun riavvio automatico finora")})}
+["raOn","raMin","raMax"].forEach(function(id){$(id).addEventListener("input",function(){RADIRTY=true});$(id).addEventListener("change",function(){RADIRTY=true})});
+$("bRa").onclick=function(){post("/api/malfunzionamenti",{azione:"riavvio",on:$("raOn").checked,min:$("raMin").value,max:$("raMax").value}).then(function(r){
+  $("raEsito").textContent=r.errore?T(r.errore):T("Salvato");if(!r.errore){RADIRTY=false;caricaRa()}})};
 $("bAv").onclick=function(){post("/api/malfunzionamenti",{azione:"avvisi",on:$("avOn").checked,attesa:$("avAt").value,sollecito:$("avSo").value}).then(function(r){
   $("avEsito").textContent=r.errore?T(r.errore):T("Salvato");if(!r.errore)AVDIRTY=false})};
 $("bMal").onclick=function(){post("/api/malfunzionamenti",leggiMal()).then(function(r){
@@ -1458,7 +1474,7 @@ api("/api/me").then(function(m){
   function nasc(id,ok){var e=$(id);if(e)e.classList.toggle("hide",!ok)}
   nasc("bScarica",P.scarica);nasc("bImporta",P.scarica);
   document.querySelectorAll("#prezzo,#iva,#bPrezzo").forEach(function(e){(e.tagName==="BUTTON"?e:e.parentNode).classList.toggle("hide",!P.prezzo)});
-  nasc("bStampa",P.stampa);nasc("bCsv",P.stampa);nasc("bCsvAnno",P.stampa);
+  nasc("bStampa",P.stampa);nasc("bCsv",P.stampa);nasc("bCsvAnno",P.stampa);nasc("navPre",P.prepagate);
   document.querySelector('nav button[data-t="t1"]').classList.toggle("hide",!P.report);
   document.querySelector('nav button[data-t="t2"]').classList.toggle("hide",!P.storico);
   document.querySelector('nav button[data-t="t3"]').classList.toggle("hide",!P.sessioni);
