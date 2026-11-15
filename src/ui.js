@@ -208,7 +208,7 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
 <section id="t11" class="hide">
   <div class="card" id="cTkNuovo">
     <h2>Assistenza</h2>
-    <div class="card hide" id="cSenzaT" style="margin:0 0 10px">Non hai ancora una tessera. Puoi richiederla qui sotto<span class="fee-par"></span>: ti contatteremo per la consegna e il pagamento. Se l'hai già, attendi che l'Amministratore la abbini al tuo account.</div>
+    <div class="card hide" id="cSenzaT" style="margin:0 0 10px">La tua registrazione è completa. Ora l’Amministratore deve abbinare la tua tessera al tuo account: quando lo farà, riceverai un’email e qui vedrai le tue ricariche. Non serve registrarti di nuovo. Se non hai ancora la tessera, puoi richiederla qui sotto<span class="fee-par"></span>: ti contatteremo per la consegna e il pagamento.<br><br>L’Amministratore è già stato avvisato. Se passa troppo tempo, apri una richiesta di assistenza qui sotto oppure <a href="#" id="aTk">clicca qui</a>.</div>
     <div class="sub">Da qui puoi inviare una richiesta all'Amministratore. Riceverai l'esito per email.</div>
     <div class="bar"><label>Tipo di richiesta <select id="tkTipo">
       <option value="tessera">Tessera smarrita o danneggiata</option><option value="nuova">Richiesta nuova tessera</option><option value="dati">Correzione dei dati</option>
@@ -246,7 +246,7 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
   <div class="card">
     <h2>Tessere prepagate</h2>
     <div class="w"><table id="tabPre"></table></div>
-    <div class="sub">Il prezzo serve solo a scalare il credito e lo decidi tu, tessera per tessera. Il consumo conta le ricariche dalla data di attivazione, compresa quella in corso. A credito esaurito la tessera viene bloccata sulla colonnina e la ricarica in corso viene fermata da remoto; l'utente riceve una mail. Aggiungere credito sblocca la tessera. Tocca una riga per sceglierla.</div>
+    <div class="sub">Il prezzo serve solo a scalare il credito e lo decidi tu, tessera per tessera. Il consumo conta le ricariche dalla data di attivazione, compresa quella in corso. A credito esaurito la tessera viene bloccata sulla colonnina e la ricarica in corso viene fermata da remoto; l'utente riceve un’email. Aggiungere credito sblocca la tessera. Tocca una riga per sceglierla.</div>
   </div>
   <div class="card solo-adm hide">
     <h2>Aggiungi credito o modifica</h2>
@@ -273,23 +273,23 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
     <h2>Notifiche</h2>
     <div style="overflow:auto;height:240px;border:1px solid var(--line);border-radius:6px"><table id="tabNot" style="table-layout:fixed;width:100%"></table></div>
     <div class="bar"><button id="bNotPrec" class="hide">Mostra precedenti</button> <span class="sub" id="notPrecTxt"></span> <button id="bNotLette" class="hide">Segna come lette</button></div>
-    <p class="sub">Qui compaiono gli avvisi che non partono via mail: controlli solo notifica (consumi Cloudflare), mail non inviate, nessun destinatario impostato.</p>
+    <p class="sub">Qui compaiono gli avvisi che non partono via email: controlli solo notifica (consumi Cloudflare), email non inviate, nessun destinatario impostato.</p>
   </div>
   <div class="card solo-adm hide">
     <h2>Avvisi agli utenti</h2>
     <div class="bar"><label><input type="checkbox" id="avOn"> Avvisa chi ha caricato quando la ricarica è finita: riepilogo con orari e kWh e invito a scollegare l'auto</label></div>
     <div class="bar"><label>Promemoria dopo <input id="avAt" type="number" min="0" max="240" style="width:5em"> minuti se l'auto è ancora collegata (0 = nessuno)</label> <label>Secondo promemoria dopo <input id="avSo" type="number" min="0" max="1440" style="width:5em"> minuti (0 = nessuno)</label></div>
     <div class="bar"><button class="p" id="bAv">Salva</button> <span class="sub err" id="avEsito"></span></div>
-    <div class="sub">Il riepilogo (inizio, fine, durata, kWh; per le prepagate costo e credito) parte quando la ricarica finisce, per mail. Può arrivare fino a 5 minuti dopo; niente riepilogo a 0 kWh.</div>
+    <div class="sub">Il riepilogo (inizio, fine, durata, kWh; per le prepagate costo e credito) parte quando la ricarica finisce, per email. Può arrivare fino a 5 minuti dopo; niente riepilogo a 0 kWh.</div>
   </div>
   <div class="card solo-adm hide">
     <h2>Destinatari malfunzionamenti</h2>
     <div class="bar"><label>A (separa più indirizzi con la virgola) <input id="mA" size="48" autocomplete="off"></label></div>
     <div class="bar"><label>In copia (separa più indirizzi con la virgola) <input id="mCc" size="48" autocomplete="off"></label></div>
     <div class="w"><table id="tabMal"></table></div>
-    <div class="bar"><button class="p" id="bMal">Salva</button> <button id="bMalProva">Invia mail di prova</button> <span class="sub err" id="mEsito"></span></div>
+    <div class="bar"><button class="p" id="bMal">Salva</button> <button id="bMalProva">Invia email di prova</button> <span class="sub err" id="mEsito"></span></div>
     <div class="sub" id="mUlt"></div>
-    <div class="sub">I controlli partono spenti e girano ogni 5 minuti. Oltre la soglia arriva una mail, e un'altra quando il problema rientra; riavvio, IP e firmware avvisano una volta sola. La soglia della Conferma collegamento è almeno il doppio del suo intervallo.</div>
+    <div class="sub">I controlli partono spenti e girano ogni 5 minuti. Oltre la soglia arriva un’email, e un'altra quando il problema rientra; riavvio, IP e firmware avvisano una volta sola. La soglia della Conferma collegamento è almeno il doppio del suo intervallo.</div>
   </div>
   <div class="card solo-adm hide">
     <h2>Ultimi episodi</h2>
@@ -297,7 +297,7 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
   </div>
   <div class="card solo-adm hide">
     <h2>Consumi Cloudflare</h2>
-    <h3 style="margin:0 0 6px;font-size:14px">Mail inviate dal sito</h3>
+    <h3 style="margin:0 0 6px;font-size:14px">Email inviate dal sito</h3>
     <div class="w"><table id="tabMsg"></table></div>
     <p class="sub" id="msgNota"></p>
     <h3 style="margin:14px 0 6px;font-size:14px">Cosa consuma (conteggio del sito)</h3>
@@ -349,7 +349,7 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
       <button class="p" id="bUInvita">Invia invito</button>
       <button id="bUPerm">Salva solo i permessi</button>
     </div>
-    <div class="sub">L'utente riceve una mail con un link monouso (valido 48 ore) per scegliere la propria password al primo accesso.</div>
+    <div class="sub">La persona riceve un’email con un link per scegliere la password al primo accesso: vale 72 ore e si può usare una volta sola.</div>
     <div class="sub err" id="uEsito"></div>
     <input id="uLink" class="hide" readonly size="60">
   </div>
@@ -360,7 +360,7 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
     <div class="bar"><label style="flex:1">Testo inglese<textarea id="cmEn" rows="5" style="width:100%;display:block"></textarea></label></div>
     <div class="bar"><button id="bCmAnteprima">Anteprima</button> <button class="p hide" id="bCmInvia">Invia</button> <span class="sub" id="cmEsito"></span></div>
     <div id="cmPrev" class="hide" style="border:1px solid var(--line);border-radius:6px;padding:10px;margin-top:8px"></div>
-    <div class="sub">Va a tutti gli account attivi con email confermata, tranne l'admin; al massimo 44 mail per invio. L'anteprima mostra quanti sono i destinatari e la mail come arriverà. Ogni riga del testo diventa una riga della mail.</div>
+    <div class="sub">Va a tutti gli account attivi con email confermata, tranne l'admin; al massimo 44 email per invio. L'anteprima mostra quanti sono i destinatari e l’email come arriverà. Ogni riga del testo diventa una riga dell’email.</div>
   </div>
 </section>
 
@@ -396,7 +396,7 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
   </div>
   <div class="card">
     <h2>Mail</h2>
-    <div class="sub">Facoltativo, con Resend (resend.com): serve per inviti, registrazioni, report, ticket e avvisi. Senza, il sito mostra i link da inviare a mano e le mail non partono. La chiave si può anche mettere come secret RESEND_API_KEY.</div>
+    <div class="sub">Facoltativo, con Resend (resend.com): serve per inviti, registrazioni, report, ticket e avvisi. Senza, il sito mostra i link da inviare a mano e le email non partono. La chiave si può anche mettere come secret RESEND_API_KEY.</div>
     <div class="bar"><label>Chiave API Resend <input id="cf_resend_key" type="password" size="28" autocomplete="new-password"></label> <label><input type="checkbox" id="cf_rk_clear"> Cancella la chiave salvata</label></div>
     <div class="bar"><label>Mittente (dominio verificato su Resend) <input id="cf_mail_from" size="40" placeholder="Colonnina &lt;ricariche@esempio.it&gt;" autocomplete="off"></label></div>
   </div>
@@ -527,8 +527,8 @@ function caricaReport(){
     $("iva").value=String(iv===null||iv===undefined?0:iv).replace(".",",");
     $("titoloRep").textContent=T("Ripartizione costi ricarica - ")+Tm(r.titolo);
     $("subRep").textContent=r.prezzo===null?T("Prezzo non ancora inserito"):(T("Prezzo ")+it(r.prezzo,4)+T(" €/kWh, IVA ")+it(r.iva_pct,1)+"% - "+T("sessioni: ")+r.sessioni);
-    $("avviso").textContent=r.prezzo===null?T("Inserisci il prezzo del kWh di questo mese e premi Salva prezzo per calcolare gli importi. Dopo il salvataggio non si potra' piu' modificare."):
-      (r.bloccato?T("Prezzo bloccato: una volta inserito non si puo' piu' modificare."):"");
+    $("avviso").textContent=r.prezzo===null?T("Inserisci il prezzo del kWh di questo mese e premi Salva prezzo per calcolare gli importi. Dopo il salvataggio non si potrà più modificare."):
+      (r.bloccato?T("Prezzo bloccato: una volta inserito non si può più modificare."):"");
     $("avviso").style.color=r.bloccato?"":"var(--mut)";
     $("prezzo").disabled=$("iva").disabled=$("bPrezzo").disabled=!!r.bloccato;
     $("bReinvia").classList.toggle("hide",!(io&&io.ruolo==="admin"&&r.prezzo!==null));
@@ -602,9 +602,9 @@ $("bPrezzo").onclick=function(){
   var p=$("prezzo").value.trim().replace(",","."), i=$("iva").value.trim().replace(",",".")||"0";
   if(p!==""&&(isNaN(+p)||+p<=0||+p>=5)){alert(T("Prezzo non valido: scrivi per esempio 0,2845"));return}
   if(isNaN(+i)||+i<0||+i>100){alert(T("IVA non valida: scrivi per esempio 10 oppure 0"));return}
-  if(p!==""&&!confirm(T("Dopo il salvataggio il prezzo di questo mese non si potra' piu' modificare e il report verra' inviato per mail ai destinatari e ogni utente ricevera' i propri importi. Confermi?")))return;
+  if(p!==""&&!confirm(T("Dopo il salvataggio il prezzo di questo mese non si potrà più modificare e il report verrà inviato per email ai destinatari e ogni utente riceverà i propri importi. Confermi?")))return;
   post("/api/prezzo",{anno:+$("selAnno").value,mese:+$("selMese").value,prezzo:p===""?null:+p,iva:+i}).then(function(r){
-    if(r.errore)alert(T(r.errore));else $("esito").textContent=esitoMail(r,"Prezzo salvato. ")+(r.utenti&&(r.utenti.inviate||r.utenti.errori)?". "+T("Mail agli utenti: ")+r.utenti.inviate+T(" inviate")+(r.utenti.errori?", "+r.utenti.errori+T(" non riuscite"):""):"");caricaReport()});
+    if(r.errore)alert(T(r.errore));else $("esito").textContent=esitoMail(r,"Prezzo salvato. ")+(r.utenti&&(r.utenti.inviate||r.utenti.errori)?". "+T("Email agli utenti: ")+r.utenti.inviate+T(" inviate")+(r.utenti.errori?", "+r.utenti.errori+T(" non riuscite"):""):"");caricaReport()});
 };
 
 $("bScarica").onclick=function(){
@@ -1002,6 +1002,8 @@ function caricaProfilo(salva){
 
 var TIPIT={tessera:"Tessera smarrita o danneggiata",dati:"Correzione dei dati",cancellazione:"Cancellazione dei dati / dell'utenza",colonnina:"Problema con la colonnina",altro:"Altro",nuova:"Richiesta nuova tessera"};
 var TESST=[];
+// "clicca qui" for the person waiting for activation: the request form below with "Altro" and the cursor in the message (the types are static, nothing to wait for)
+$("aTk").onclick=function(e){e.preventDefault();$("tkTipo").value="altro";tipoT();$("tkTesto").scrollIntoView({block:"center"});$("tkTesto").focus()};
 function tipoT(){var t=$("tkTipo").value;$("tkTessBox").classList.toggle("hide",t!=="tessera");$("tkTessInfo").style.display=t==="tessera"?"block":"none";$("tkDatiBox").classList.toggle("hide",t!=="dati");$("tkCancInfo").style.display=t==="cancellazione"?"block":"none";$("tkNuovaInfo").style.display=t==="nuova"?"block":"none";$("tkPagBox").classList.toggle("hide",t!=="nuova");$("tkPag").style.display=t==="nuova"?"block":"none";if(t==="nuova")pagTesto()}
 var PAG={};
 function pagLink(k,v){if(/^https:\/\//.test(v))return v;return k==="paypal"?"https://paypal.me/"+v+"/5EUR":k==="satispay"?"https://tag.satispay.com/"+v:"https://revolut.me/"+v}
@@ -1137,7 +1139,7 @@ function caricaCf(){
   return api("/api/consumi").then(function(d){
     if(d&&d.messaggi){var K=Object.keys(d.messaggi).sort().reverse(),M2=row([th(T("Mese")),th("Mail",1),th(T("Errori"),1)]);
       K.forEach(function(k){var c=d.messaggi[k];M2+=row([td(esc(k.split("-").reverse().join("-"))),td((c.mail||0).toLocaleString(LOC)+' <small>('+((c.mail||0)/3000*100).toLocaleString(LOC,{maximumFractionDigits:1})+'%)</small>',1),td(String(c.mail_err||0),1)])});
-      $("tabMsg").innerHTML=K.length?M2:"";$("msgNota").textContent=(K.length?"":T("Nessun invio contato finora. "))+T("Resend gratuito: 3.000 mail al mese e 100 al giorno (tra parentesi la quota mensile).")}
+      $("tabMsg").innerHTML=K.length?M2:"";$("msgNota").textContent=(K.length?"":T("Nessun invio contato finora. "))+T("Resend gratuito: 3.000 email al mese e 100 al giorno (tra parentesi la quota mensile).")}
     if(d&&d.chi){var G=d.chi.giorni||{},gg=Object.keys(G).sort().reverse().slice(0,2),C=row([th(T("Giorno (UTC)")),th(T("Pagina / API")),th(T("Chiamate"),1),th(T("Query D1"),1),th(T("Chiamate in uscita"),1)]);
       gg.forEach(function(g){Object.keys(G[g]).sort(function(a,b){return G[g][b].q-G[g][a].q}).forEach(function(k){var x=G[g][k];C+=row([td(esc(g.split("-").reverse().join("-"))),td(esc(k)),td(x.n.toLocaleString(LOC),1),td(x.q.toLocaleString(LOC),1),td(x.f.toLocaleString(LOC),1)])})});
       var PP=(d.chi.pesanti||[]).filter(function(p){return p.ts>Date.now()-2*864e5&&(p.q>=35||p.f>=35)}).reverse();
@@ -1164,7 +1166,7 @@ function caricaCf(){
 }
 function disegnaMal(d){
   if(!d||d.errore)return;
-  function statoTxt(r){var st=d.stato[r.id];return !r.on?T("disattivato"):!st?T("regolare"):st.notificato?T("segnalato il ")+oraTxt(st.notificato):T("in corso dal ")+oraTxt(st.da)+(st.esito&&st.esito!=="inviata"?" - "+T("mail non inviata"):"")}
+  function statoTxt(r){var st=d.stato[r.id];return !r.on?T("disattivato"):!st?T("regolare"):st.notificato?T("segnalato il ")+oraTxt(st.notificato):T("in corso dal ")+oraTxt(st.da)+(st.esito&&st.esito!=="inviata"?" - "+T("email non inviata"):"")}
   if(MALDIRTY){d.regole.forEach(function(r){var c=document.querySelector('#tabMal td[data-s="'+r.id+'"]');if(c){var cb=document.querySelector('#tabMal input[data-m="'+r.id+'"]'),cn=document.querySelector('#tabMal input[data-n="'+r.id+'"]');c.textContent=cb&&!cb.checked&&cn&&!cn.checked?T("disattivato"):statoTxt(Object.assign({},r,{on:true}))}})}   // unsaved changes: do not redraw the table
   else{$("mA").value=d.a.join(", ");$("mCc").value=d.cc.join(", ");
     var h=row([th(T("Mail")),th(T("Notifica")),th(T("Controllo")),th(T("Soglia")),th(T("Stato"))]),g="";
@@ -1193,7 +1195,7 @@ $("bAv").onclick=function(){post("/api/malfunzionamenti",{azione:"avvisi",on:$("
   $("avEsito").textContent=r.errore?T(r.errore):T("Salvato");if(!r.errore)AVDIRTY=false})};
 $("bMal").onclick=function(){post("/api/malfunzionamenti",leggiMal()).then(function(r){
   $("mEsito").textContent=r.errore?T(r.errore):T("Impostazioni salvate");if(!r.errore){MALDIRTY=false;disegnaMal(r)}})};
-$("bMalProva").onclick=function(){post("/api/malfunzionamenti",{azione:"prova"}).then(function(r){$("mEsito").textContent=r.errore?T(r.errore):T("Mail di prova inviata")})};
+$("bMalProva").onclick=function(){post("/api/malfunzionamenti",{azione:"prova"}).then(function(r){$("mEsito").textContent=r.errore?T(r.errore):T("Email di prova inviata")})};
 function caricaDest(){return api("/api/destinatari").then(function(d){if(d&&d.a){$("dA").value=d.a.join(", ");$("dCc").value=d.cc.join(", ")}})}
 $("bDest").onclick=function(){
   post("/api/destinatari",{a:$("dA").value,cc:$("dCc").value}).then(function(r){
@@ -1207,7 +1209,8 @@ setPermForm({report:1,storico:1,sessioni:1,stampa:1});
 var ATT=null;
 function modoUtente(att){
   ATT=att||null;
-  $("bUInvita").textContent=T(ATT?"Attiva utenza":"Invia invito");
+  // "Attiva|pulsante": the button (Activate), distinct from the card status "Attiva" (Active)
+  $("bUInvita").textContent=ATT?T("Attiva|pulsante").split("|")[0]:T("Invia invito");
   $("bUPerm").classList.toggle("hide",!!ATT);
   if(ATT){$("uTipo").value="c";tipoUI()}
 }
@@ -1239,7 +1242,7 @@ function invia(email,perm,tess,altre){
   return post("/api/utenti",{azione:"invita",nome:email,permessi:perm,tessera:tess||"",tessere_altre:altre||[],lang:LANG}).then(function(r){
     if(r.errore){$("uEsito").textContent=T(r.errore);return}
     if(r.mail==="inviata")$("uEsito").textContent=T("Invito inviato a ")+email;
-    else{$("uEsito").textContent=T("Mail non inviata (")+T(r.mail)+T("). Copia il link e invialo tu:");$("uLink").value=r.link;$("uLink").classList.remove("hide")}
+    else{$("uEsito").textContent=T("Email non inviata: copia il link e mandalo tu alla persona:");$("uLink").value=r.link;$("uLink").classList.remove("hide")}
     $("uNome").value="";caricaUtenti();
   });
 }
@@ -1253,16 +1256,20 @@ function caricaUtenti(){
       $("cifraInfo").style.color=c.attiva&&!c.chiaro?"":"var(--err)";
       if(!c.turnstile)$("cifraInfo").textContent+=" - "+T("Controllo anti-robot nella registrazione NON attivo: mancano TURNSTILE_SITE_KEY e TURNSTILE_SECRET (vedi README)")});
     var t=row([th(T("Utente")),th(T("Stato")),th(T("Permessi / tessera")),th("")]);
+    // users waiting for activation (the ones counted next to "Utenti") go first and stand out
+    L=L.filter(function(x){return x.in_attesa_tessera}).concat(L.filter(function(x){return !x.in_attesa_tessera}));
     L.forEach(function(x){
       var adm=x.ruolo==="admin";
       var an=x.anagrafica;
-      var st=adm?"admin":T(an&&an.da_confermare?"email da confermare":x.in_attesa_tessera?"in attesa di tessera":(x.attivo?"attivo":(x.invito_scaduto?"invito scaduto":"invito in attesa")));
+      var st=adm?"admin":T(an&&an.da_confermare?"email da confermare":x.in_attesa_tessera?"in attesa di tessera":(x.attivo?(x.pw_da_scegliere?"password da scegliere":"attivo"):(x.invito_scaduto?"invito scaduto":"invito in attesa")));
       var pe=adm?T("tutti"):x.tessera?(x.tessera+" - "+(x.tessera_nome||"")+(x.tessere_altre&&x.tessere_altre.length?" + "+x.tessere_altre.map(function(a){return a.tag+" - "+(a.nome||"")}).join(" + "):"")):Object.keys(x.perm).filter(function(k){return x.perm[k]}).map(function(k){return T(ETI[k])}).join(", ")||T("nessuno");
       var attiva=an&&(x.in_attesa_tessera||an.da_confermare);
-      var az=adm?"":'<button class="bm" data-m="'+esc(x.nome)+'">'+T("Modifica")+'</button> '+(attiva?'<button class="ba" data-m="'+esc(x.nome)+'">'+T("Attiva utenza")+'</button> ':'<button class="br" data-m="'+esc(x.nome)+'" title="'+T(x.attivo?"Manda un link per reimpostare la password":"Manda di nuovo il link di invito")+'">'+T(x.attivo?"Reimposta":"Reinvia")+'</button> ')+'<button class="bd" data-d="'+esc(x.nome)+'">'+T("Elimina")+'</button>';
+      // as in Monitoring: for people waiting for activation "Attiva" takes the place of "Modifica"
+      var az=adm?"":(attiva?'<button class="ba" data-m="'+esc(x.nome)+'">'+T("Attiva|pulsante").split("|")[0]+'</button> ':'<button class="bm" data-m="'+esc(x.nome)+'">'+T("Modifica")+'</button> <button class="br" data-m="'+esc(x.nome)+'" title="'+T(x.attivo?"Manda un link per reimpostare la password":"Manda di nuovo il link di invito")+'">'+T(x.attivo?"Reimposta":"Reinvia")+'</button> ')+'<button class="bd" data-d="'+esc(x.nome)+'">'+T("Elimina")+'</button>';
       var ut=esc(x.nome);
       if(an)ut='<b>'+esc((an.nome||"")+" "+(an.cognome||""))+'</b><br>'+ut+'<br><small>'+esc(an.tel1||"")+(an.tel2?" / "+esc(an.tel2):"")+'</small>';
-      t+=row([td(ut),td(st),td(esc(pe)),'<td class="n">'+az+"</td>"]);
+      if(x.in_attesa_tessera)st='<span class="stNuovo">'+T("in attesa di attivazione")+'</span>'+(x.pw_da_scegliere?'<br><small>'+T("password da scegliere")+'</small>':"");
+      t+=row([td(ut),td(st),td(esc(pe)),'<td class="n">'+az+"</td>"],x.in_attesa_tessera?"nuovo":"");
     });
     $("tabU").innerHTML=t;
     var per={};L.forEach(function(x){per[x.nome]=x});
@@ -1284,7 +1291,7 @@ $("bUInvita").onclick=function(){
   if(!ATT){invia($("uNome").value,d.perm,d.tess,d.altre);return}
   post("/api/utenti",{azione:"permessi",nome:ATT,permessi:{},tessera:d.tess,tessere_altre:d.altre,anagrafica:d.an}).then(function(r){
     if(r.errore){$("uEsito").textContent=T(r.errore);return}
-    $("uEsito").textContent=r.mail==="inviata"?T("Utenza attivata: mail inviata a ")+ATT:r.mail?T("Utenza attivata, ma la mail non è partita (")+T(r.mail)+")":T("Tessera abbinata: l'utenza si attiverà quando l'utente conferma l'email");
+    $("uEsito").textContent=T(r.mail==="inviata"?"Accesso attivato: la persona riceverà un’email di avviso":r.mail?"Accesso attivato, ma l’email di avviso non è partita":"Tessera abbinata: l’accesso si attiverà quando la persona conferma l’email");
     modoUtente(null);anagMostra(null);$("uNome").value="";caricaUtenti()});
 };
 $("uNome").addEventListener("input",function(){if(ATT&&$("uNome").value.trim().toLowerCase()!==ATT)modoUtente(null);if(ANAG&&$("uNome").value.trim().toLowerCase()!==ANAG)anagMostra(null)});
@@ -1539,11 +1546,7 @@ details h4{margin:10px 0 3px;font-size:13px}details p,details li{margin:3px 0}
       <label>Cognome<input id="rC" autocomplete="family-name" required></label>
     </div>
     <label>Indirizzo email<input id="rE" type="email" autocomplete="email" autocapitalize="none" required></label>
-    <div class="g2">
-      <label>Password<input id="rP" type="password" autocomplete="new-password" required></label>
-      <label>Ripeti la password<input id="rP2" type="password" autocomplete="new-password" required></label>
-    </div>
-    <div class="rgw"><div class="rg" id="rg"><span data-k="l">12+ caratteri</span><span data-k="a">minuscola</span><span data-k="A">maiuscola</span><span data-k="d">numero</span><span data-k="s">carattere speciale</span></div><button type="button" class="occhio" id="bOcc">Mostra</button></div>
+    <div class="sub" style="margin-top:-4px">Dopo la registrazione riceverai un’email per confermare l’indirizzo e scegliere la password.</div>
     <div class="g2">
       <label>Numero di telefono (obbligatorio)
         <div class="tel"><select id="pf1" aria-label="Prefisso"></select><input id="t1" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="333 1234567" required></div>
@@ -1616,7 +1619,7 @@ function riempi(sel){
 riempi($("pf1"));riempi($("pf2"));
 function pwUguali(a,b){var i=$(b),d=document.createElement("div");d.className="pwm";var dopo=i.closest("label")||(i.nextElementSibling&&i.nextElementSibling.className==="occhio"?i.nextElementSibling:i);dopo.insertAdjacentElement("afterend",d);function c(){var x=$(a).value,y=i.value;d.className="pwm"+(y?(x===y?" ok":" no"):"");d.textContent=y?T(x===y?"Le due password coincidono":"Le due password non coincidono"):""}i.addEventListener("input",c);$(a).addEventListener("input",c)}
 function occhi(){document.querySelectorAll('input[type="password"]').forEach(function(i){if(i.nextElementSibling&&i.nextElementSibling.className==="occhio")return;var b=document.createElement("button");b.type="button";b.className="occhio";b.textContent=T("mostra");b.onclick=function(){var v=i.type==="password";i.type=v?"text":"password";b.textContent=T(v?"nascondi":"mostra")};i.insertAdjacentElement("afterend",b)})}
-occhi();["rP","rP2"].forEach(function(k){var o=$(k).nextElementSibling;if(o&&o.className==="occhio")o.remove()});$("bOcc").onclick=function(){var v=$("rP").type==="password";$("rP").type=$("rP2").type=v?"text":"password";$("bOcc").textContent=T(v?"Nascondi":"Mostra")};pwUguali("rP","rP2");
+occhi();
 // "Password dimenticata?" on the same row as "mostra" under the password field (sign-in page only)
 (function(){var p=$("p"),d=$("bDim");if(!p||!d)return;var o=p.nextElementSibling;if(!o||o.className!=="occhio")return;var r=document.createElement("div");r.style.cssText="display:flex;justify-content:space-between;align-items:center;gap:8px";d.parentNode.insertBefore(r,d);r.appendChild(d);r.appendChild(o)})();
 trDom();
@@ -1647,15 +1650,8 @@ $("f").onsubmit=function(ev){
 $("bDim").onclick=function(){var b=$("recBox");b.classList.toggle("hide");if(!$("recN").value)$("recN").value=$("n").value;$("recN").focus()};
 $("bRec").onclick=function(){var e=$("recE"),n=$("recN").value.trim();e.classList.remove("err");if(!n){e.classList.add("err");e.textContent=T("Scrivi l'email dell'accesso");return}
   $("bRec").disabled=true;fetch("/api/recupero",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({nome:n})}).then(function(r){return r.json()}).then(function(r){
-    $("bRec").disabled=false;e.classList.toggle("err",!r.ok);e.textContent=r.ok?T("Se l'indirizzo corrisponde a un accesso attivo, riceverai una mail con il link per scegliere una nuova password (valido un'ora)."):T(r.errore||"Errore")})
+    $("bRec").disabled=false;e.classList.toggle("err",!r.ok);e.textContent=r.ok?T("Se l'indirizzo corrisponde a un accesso attivo, riceverai un’email con il link per scegliere una nuova password. Il link vale un’ora."):T(r.errore||"Errore")})
   .catch(function(){$("bRec").disabled=false;e.textContent=T("Errore di rete")})};
-// password requirements (same checks as the server)
-function reqPw(p){return{l:p.length>=12,a:/[a-z]/.test(p),A:/[A-Z]/.test(p),d:/[0-9]/.test(p),s:/[^A-Za-z0-9\s]/.test(p)}}
-function pwOk(p){var r=reqPw(p);return r.l&&r.a&&r.A&&r.d&&r.s}
-$("rP").oninput=function(){
-  var r=reqPw($("rP").value);
-  document.querySelectorAll("#rg span").forEach(function(s){s.className=r[s.dataset.k]?"s":""});
-};
 function nazionale(t){return t.value.replace(/[\s.\-()\/]/g,"")}
 function telOk(pf,n){return /^[0-9]{6,12}$/.test(n)&&/^\+[1-9][0-9]{7,14}$/.test("+"+pf.value+n)}
 $("g").onsubmit=function(ev){
@@ -1664,14 +1660,12 @@ $("g").onsubmit=function(ev){
   var nome=$("rN").value.trim(),cog=$("rC").value.trim(),em=$("rE").value.trim().toLowerCase();
   if(!nome||!cog){er.textContent=T("Inserisci nome e cognome");return}
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)){er.textContent=T("Indirizzo email non valido");return}
-  if(!pwOk($("rP").value)){er.textContent=T("La password non rispetta i requisiti");return}
-  if($("rP").value!==$("rP2").value){er.textContent=T("Le due password non coincidono");return}
   var n1=nazionale($("t1")),n2=nazionale($("t2")),t1,t2="";
   if(!telOk($("pf1"),n1)){er.textContent=T("Numero di telefono non valido");return}
   t1="+"+$("pf1").value+n1;
   if(n2){if(!telOk($("pf2"),n2)){er.textContent=T("Secondo numero di telefono non valido");return}t2="+"+$("pf2").value+n2}
   if(!$("cR").checked){er.textContent=T("Devi accettare il regolamento");return}
-  if(!$("cP").checked){er.textContent=T("Devi confermare di aver letto l'informativa privacy");return}
+  if(!$("cP").checked){er.textContent=T("Conferma di aver letto l’informativa sulla privacy");return}
   $("bR").disabled=true;
   // Turnstile works hidden (interaction-only): its token can arrive a couple of seconds after the form opens, so wait up to 8 s
   var ts=$("ts"),att=0;
@@ -1681,12 +1675,12 @@ $("g").onsubmit=function(ev){
     invia()})();
   function invia(){
   fetch("/api/registrazione",{method:"POST",headers:{"content-type":"application/json"},
-    body:JSON.stringify({nome:nome,cognome:cog,email:em,password:$("rP").value,tel1:t1,tel2:t2,
+    body:JSON.stringify({nome:nome,cognome:cog,email:em,tel1:t1,tel2:t2,
       reg:true,priv:true,lang:LANG,hp:$("hp").value,turnstile:tok()})})
   .then(function(r){return r.json()}).then(function(r){
     $("bR").disabled=false;
     if(!r.ok&&window.turnstile){try{turnstile.reset()}catch(e){}}
-    if(r.ok){$("g").querySelectorAll("input,select,button.p").forEach(function(x){x.disabled=true});$("ro").textContent=T("Registrazione ricevuta. Ti abbiamo mandato una email di conferma: apri il link per confermare l'indirizzo, poi potrai accedere. Se hai già la tessera, l'Amministratore la abbinerà al tuo account e riceverai la mail di Attivazione del servizio; se non ce l'hai, dopo l'accesso potrai richiederla dalla pagina Assistenza.");$("ro").className="okm"}
+    if(r.ok){$("g").querySelectorAll("input,select,button.p").forEach(function(x){x.disabled=true});$("ro").textContent=T("Ti abbiamo mandato un’email per completare la registrazione. Il link vale 24 ore. Se non la trovi, guarda nella posta indesiderata.");$("ro").className="okm"}
     else er.textContent=T(r.errore||"Errore")})
   .catch(function(){$("bR").disabled=false;er.textContent=T("Errore di rete")});
   }
@@ -1809,7 +1803,12 @@ if(COMPLETA){
   $("bEsci").onclick=function(){fetch("/api/logout",{method:"POST"}).then(function(){location.href="/"})};
 }else if(REC){                                          // password recovery: password fields only
   [].forEach.call($("g").children,function(x){if(x.id!=="pwBox"&&x.id!=="bR"&&x.id!=="re")x.style.display="none"});
-  $("tit").textContent="Scegli una nuova password";$("chi").textContent=T("Utente: ")+mail;$("bR").textContent="Salva e accedi";
+  // after the email confirmation (confermata) or from the activation email (prima): the first password, as in Monitoring
+  var PRIMA=!!(q.get("confermata")||q.get("prima"));
+  $("tit").textContent=PRIMA?"Scegli la tua password":"Scegli una nuova password";$("bR").textContent="Salva la password";
+  $("chi").textContent=T("Utente: ")+mail;
+  // the note goes in #nvm: #chi is hidden on the phone
+  if(q.get("confermata")){$("chi").textContent="";$("nvm").textContent=T("Email confermata: ora scegli la password per entrare.");$("nvm").classList.remove("hide")}
 }else{
   $("tit").textContent="Scegli la tua password e completa i tuoi dati";$("chi").textContent=T("Utente: ")+mail;
 }
@@ -1821,7 +1820,7 @@ if(tok&&!COMPLETA){
   .then(function(r){return r.json()}).then(function(r){
     if(r.ok!==false){$("g").style.display="";return}
     $("tit").textContent=T("Link non valido o scaduto");$("chi").textContent="";
-    $("nvm").textContent=T(REC?"Questo link per la nuova password non vale più: è scaduto oppure è già stato usato. Chiedine uno nuovo dalla pagina di accesso, con «Password dimenticata?».":"Questo invito non vale più: è scaduto oppure è già stato usato. Chiedi all'amministratore di mandartene uno nuovo.");
+    $("nvm").textContent=T(REC?"Questo link per scegliere la password è scaduto o è già stato usato. Chiedine uno nuovo con «Password dimenticata?» dalla pagina di accesso: ti arriverà per email.":"Questo invito non vale più: è scaduto oppure è già stato usato. Chiedi all'amministratore di mandartene uno nuovo.");
     $("nvm").classList.remove("hide");$("nv").classList.remove("hide");
   }).catch(function(){$("g").style.display=""});
 }
@@ -1868,7 +1867,7 @@ $("g").onsubmit=function(ev){
   t1="+"+$("pf1").value+n1;
   if(n2){if(!telOk($("pf2"),n2)){er.textContent=T("Secondo numero di telefono non valido");return}t2="+"+$("pf2").value+n2}
   if(!$("cR").checked){er.textContent=T("Devi accettare il regolamento");return}
-  if(!$("cP").checked){er.textContent=T("Devi confermare di aver letto l'informativa privacy");return}
+  if(!$("cP").checked){er.textContent=T("Conferma di aver letto l’informativa sulla privacy");return}
   var body={nome:nome,cognome:cog,tel1:t1,tel2:t2,reg:true,priv:true};
   if(!COMPLETA){body.password=$("rP").value;body.token=tok;body.email=mail}
   $("bR").disabled=true;
@@ -1923,7 +1922,7 @@ pre{white-space:pre-wrap;font-size:12px;max-height:140px;overflow:auto;border:1p
     <h2>Sito</h2>
     <div class="riga"><label>Titolo del sito<input id="cf_title" value="EV Charger"></label></div>
     <div class="riga"><label>Fuso orario<input id="cf_tz" value="Europe/Rome"></label><label>Valuta<input id="cf_currency" value="&euro;"></label></div>
-    <h2>Mail (facoltativo, Resend)</h2>
+    <h2>Email (facoltativo, Resend)</h2>
     <div class="riga"><label>Chiave API Resend<input id="cf_resend_key" type="password" autocomplete="new-password"></label><label>Mittente<input id="cf_mail_from" placeholder="Colonnina &lt;ricariche@esempio.it&gt;"></label></div>
     <div class="riga"><button type="button" id="bProva">Prova il collegamento</button><button type="submit" class="p" id="bOk" style="background:var(--acc);color:var(--btx);border-color:var(--acc)">Salva e inizia</button></div>
     <div class="err" id="er"></div><div id="prova"></div>

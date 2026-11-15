@@ -403,7 +403,7 @@ const costoTessera = (c) => (c.card_fee > 0 ? `${String(c.card_fee).replace(".",
 function parseStorico(testo, c) {
   let body = testo;
   if (c.hist_json_field) {
-    let j; try { j = JSON.parse(testo); } catch (_) { throw new Error("La risposta dello storico non e' JSON (controlla il campo JSON nelle Impostazioni)"); }
+    let j; try { j = JSON.parse(testo); } catch (_) { throw new Error("La risposta dello storico non è JSON (controlla il campo JSON nelle Impostazioni)"); }
     body = j[c.hist_json_field];
     if (typeof body !== "string") throw new Error(`La risposta dello storico non ha il campo di testo "${c.hist_json_field}"`);
   }
@@ -747,7 +747,7 @@ const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 // permissions that can be given to users (the admin always has everything)
 const PERMESSI = ["report", "storico", "sessioni", "prezzo", "stampa", "scarica", "app", "live", "prepagate"];   // "prepagate": prepaid cards tab, read only (off by default)
 const PERMESSI_DEFAULT = { report: 1, storico: 1, sessioni: 1, stampa: 1 };
-const DURATA_INVITO = 48 * 3600;
+const DURATA_INVITO = 72 * 3600;           // invitation and "Choose your password" link of the activation email (as in Monitoring)
 const DURATA_CONFERMA = 24 * 3600;        // email confirmation link after self-registration
 function permessiDi(u) {
   if (u.tessera) return Object.fromEntries(PERMESSI.map((k) => [k, false]));   // charger user: sees only their own sessions
@@ -788,7 +788,7 @@ async function preparaTabelle(env) {
     env.DB.prepare("CREATE TABLE IF NOT EXISTS prepagate (tag TEXT PRIMARY KEY, prezzo_cent INTEGER NOT NULL, credito_cent INTEGER NOT NULL DEFAULT 0, dal INTEGER NOT NULL, soglia_cent INTEGER NOT NULL DEFAULT 500, storico TEXT, avvisata INTEGER DEFAULT 0, bloccata INTEGER DEFAULT 0, residuo_wh INTEGER, residuo_cent INTEGER, calcolato INTEGER, aperta TEXT)"),   // prepaid cards: credit deducted with a per-card price
   ]);
   const col = (await env.DB.prepare("PRAGMA table_info(utenti)").all()).results.map((c) => c.name);
-  for (const [nome, tipo] of [["permessi", "TEXT"], ["invito_hash", "TEXT"], ["invito_exp", "INTEGER"], ["tessera", "TEXT"], ["cognome", "TEXT"], ["nome_proprio", "TEXT"], ["tel1", "TEXT"], ["tel2", "TEXT"], ["verifica_hash", "TEXT"], ["verifica_exp", "INTEGER"], ["consensi", "TEXT"], ["registrato_il", "TEXT"], ["profilo_il", "TEXT"], ["tessere_altre", "TEXT"], ["lingua", "TEXT"]])
+  for (const [nome, tipo] of [["permessi", "TEXT"], ["invito_hash", "TEXT"], ["invito_exp", "INTEGER"], ["tessera", "TEXT"], ["cognome", "TEXT"], ["nome_proprio", "TEXT"], ["tel1", "TEXT"], ["tel2", "TEXT"], ["verifica_hash", "TEXT"], ["verifica_exp", "INTEGER"], ["consensi", "TEXT"], ["registrato_il", "TEXT"], ["profilo_il", "TEXT"], ["tessere_altre", "TEXT"], ["lingua", "TEXT"], ["pw_scegliere", "INTEGER"]])
     if (!col.includes(nome)) await env.DB.prepare(`ALTER TABLE utenti ADD COLUMN ${nome} ${tipo}`).run();
   const colT = (await env.DB.prepare("PRAGMA table_info(ticket)").all()).results.map((c) => c.name);
   if (!colT.includes("integrazioni")) await env.DB.prepare("ALTER TABLE ticket ADD COLUMN integrazioni TEXT").run();   // user additions to the ticket (encrypted JSON)
@@ -1222,9 +1222,9 @@ async function verificaMalfunzionamenti(env, ora = Date.now()) {
     presa_nd: { da: stP === "Unavailable" ? prima("presa_nd") : null, dett: "La presa risulta non disponibile (Unavailable)" },
     presa_ferma: { da: /^(Preparing|SuspendedEV|SuspendedEVSE|Finishing)$/.test(stP) ? prima("presa_ferma") : null, dett: "Stato della presa: " + stP + " (cavo collegato, nessuna ricarica in corso)" },
     lunga: { da: tx ? tx.inizio : null, dett: tx ? "Ricarica della tessera " + tx.tag + " iniziata il " + dataIt(tx.inizio) : "" },
-    aperta: { da: tx && stP === "Available" ? prima("aperta") : null, dett: "Risulta una ricarica aperta ma la presa e' libera" },
+    aperta: { da: tx && stP === "Available" ? prima("aperta") : null, dett: "Risulta una ricarica aperta ma la presa è libera" },
     nomi: { da: live.nomi_pendenti && !tx && !/^(Charging|Preparing|SuspendedEV|SuspendedEVSE|Finishing)$/.test(stP) ? prima("nomi") : null, dett: "I nomi delle tessere non sono stati rimessi sulla colonnina dopo l'invio della lista" },
-    lista: { da: live.lista && live.lista.ok === false && !live.sync_pendente ? prima("lista") : null, dett: "L'ultimo invio della lista tessere alla colonnina non e' andato a buon fine" },
+    lista: { da: live.lista && live.lista.ok === false && !live.sync_pendente ? prima("lista") : null, dett: "L'ultimo invio della lista tessere alla colonnina non è andato a buon fine" },
   });
   if (B) {
     const sc = await env.DB.prepare("SELECT valore FROM meta WHERE chiave='ultimo_scarico'").first();
@@ -1313,8 +1313,8 @@ async function verificaMalfunzionamenti(env, ora = Date.now()) {
           const m = await inviaMail(env, cfg.a, `Malfunzionamento: ${d.label} - ${TITOLO}`,
             mailMalf("Malfunzionamento: " + d.label, [c.dett, "Dura da: " + dataIt(c.da) + " (" + durataIt(ora - c.da) + ")", "Soglia impostata: " + sogliaTxt, "Malfunction: " + d.label]), cfg.cc);
           n.esito = m; if (m === "inviata") n.notificato = ora;
-          else if (!n.nSent && !n.notif) { n.notif = true; await notifica(env, d.label, c.dett + " (mail non inviata: " + m + ")", ora); }
-        } else if (!n.nSent && !n.notif) { n.notif = true; await notifica(env, d.label, c.dett + " (nessun destinatario mail)", ora); }
+          else if (!n.nSent && !n.notif) { n.notif = true; await notifica(env, d.label, c.dett + " (email non inviata)", ora); }
+        } else if (!n.nSent && !n.notif) { n.notif = true; await notifica(env, d.label, c.dett + " (nessun destinatario email)", ora); }
       }
       stato[id] = n;
     } else if (st.reg) {
@@ -1333,17 +1333,17 @@ async function verificaMalfunzionamenti(env, ora = Date.now()) {
   const eventi = eventiDO.filter((x) => x.id === "riavvio");
   if (B) {
     const ip = await leggiMeta(env, "ultimo_ip", null);
-    if (ip && ip.ip) { if (ext.ip && ext.ip !== ip.ip) eventi.push({ id: "ip", ts: ora, dett: "L'indirizzo IP pubblico e' passato da " + ext.ip + " a " + ip.ip }); ext.ip = ip.ip; }
+    if (ip && ip.ip) { if (ext.ip && ext.ip !== ip.ip) eventi.push({ id: "ip", ts: ora, dett: "L'indirizzo IP pubblico è passato da " + ext.ip + " a " + ip.ip }); ext.ip = ip.ip; }
   }
   const fw = A && live.boot && live.boot.firmwareVersion;
-  if (fw) { if (ext.fw && ext.fw !== fw) eventi.push({ id: "firmware", ts: ora, dett: "La versione del firmware e' passata da " + ext.fw + " a " + fw }); ext.fw = fw; }
+  if (fw) { if (ext.fw && ext.fw !== fw) eventi.push({ id: "firmware", ts: ora, dett: "La versione del firmware è passata da " + ext.fw + " a " + fw }); ext.fw = fw; }
   for (const x of eventi) {
     if (!on(x.id)) continue;
     const d = MALF[x.id];
     const rx = cfg.regole[x.id];
     let m = "non richiesta";
     if (rx.mail) { m = "nessun destinatario"; if (cfg.a.length) m = await inviaMail(env, cfg.a, `Avviso: ${d.label} - ${TITOLO}`, mailMalf("Avviso: " + d.label, [x.dett, "Il: " + dataIt(x.ts), "Notice: " + d.label]), cfg.cc); }
-    if (rx.not || (rx.mail && m !== "inviata")) await notifica(env, d.label, x.dett + (rx.mail && m !== "inviata" ? " (mail non inviata: " + m + ")" : ""), x.ts);
+    if (rx.not || (rx.mail && m !== "inviata")) await notifica(env, d.label, x.dett + (rx.mail && m !== "inviata" ? " (email non inviata)" : ""), x.ts);
     storico.unshift({ id: x.id, dal: x.ts, al: x.ts, evento: true, inviata: m === "inviata" });
   }
   storico.length = Math.min(storico.length, 100);
@@ -1556,7 +1556,7 @@ async function inviaMailUtentiPrezzo(env, anno, mese, origin) {
       if (m === "inviata") inviate++; else errori++;
     }
   }
-  if (errori || saltate) await notifica(env, "Mail del prezzo agli utenti", `${r.titolo}: ${inviate} inviate, ${errori} non riuscite, ${saltate} non inviate per il limite di ${MAX_RICHIESTE_UTENTI} richieste.`);
+  if (errori || saltate) await notifica(env, "Email del prezzo agli utenti", `${r.titolo}: ${inviate} inviate, ${errori} non riuscite, ${saltate} non inviate per il limite di ${MAX_RICHIESTE_UTENTI} richieste.`);
   return { inviate, errori };
 }
 
@@ -1586,7 +1586,7 @@ async function gestisciUtenti(env, me, b, origin) {
   if (b.azione === "invita") {
     if (!EMAIL_OK.test(nome)) return json({ errore: "Indirizzo email non valido" }, 400);
     const es = await env.DB.prepare("SELECT nome, ruolo, lingua FROM utenti WHERE nome=?").bind(nome).first();
-    if (es && es.ruolo === "admin") return json({ errore: "Questo utente e' l'admin" }, 400);
+    if (es && es.ruolo === "admin") return json({ errore: "Questo utente è l'admin" }, 400);
     const tf = await leggiTessereForm(env, b);
     if (tf.errore) return json({ errore: tf.errore }, 400);
     const tess = tf.tess; let nomeTess = "";
@@ -1608,7 +1608,7 @@ async function gestisciUtenti(env, me, b, origin) {
       mailHtml(lin, (l) => testata(l, tm(l, "Ripartizione costi di ricarica")) + `<p>${esc(tm(l, "Buongiorno,"))}</p>` +
         `<p>${esc(tm(l, "è stato creato un accesso a tuo nome: {cosa}.", { cosa: tess ? tm(l, "potrai consultare le tue ricariche (tessera {tag}, {nome})", { tag: tess, nome: nomeTess })
           : tm(l, "potrai consultare i report delle ricariche") }))}</p>` +
-        `<p>${esc(tm(l, "Per iniziare scegli la tua password dal pulsante qui sotto. Il link è personale, monouso e vale 48 ore."))}</p>` + bottone(tm(l, "Scegli la password")) +
+        `<p>${esc(tm(l, "Per iniziare scegli la tua password dal pulsante qui sotto. Il link è personale, vale 72 ore e si può usare una volta sola."))}</p>` + bottone(tm(l, "Scegli la password")) +
         `<p style="color:#555;font-size:13px">${esc(tm(l, "Il tuo nome utente è {nome}.", { nome }))}</p>`,
       `<p style="color:#555;font-size:13px">${esc(lin.map((l) => tm(l, "Se il pulsante non funziona copia questo indirizzo nel browser")).join(" / "))}:<br>${link}</p>`));
     return json({ ok: true, mail, link: mail === "inviata" ? undefined : link });
@@ -1638,7 +1638,7 @@ async function gestisciUtenti(env, me, b, origin) {
   if (b.azione === "elimina") {
     const es = await env.DB.prepare("SELECT ruolo FROM utenti WHERE nome=?").bind(nome).first();
     if (!es) return json({ errore: "utente non trovato" }, 404);
-    if (es.ruolo === "admin") return json({ errore: "L'admin non si puo' eliminare" }, 400);
+    if (es.ruolo === "admin") return json({ errore: "L'admin non si può eliminare" }, 400);
     await env.DB.prepare("DELETE FROM utenti WHERE nome=?").bind(nome).run();
     await env.DB.prepare("DELETE FROM ticket WHERE utente=?").bind(nome).run();
     return json({ ok: true });
@@ -1830,7 +1830,7 @@ async function ticket(req, env, me, url) {
     if (!TIPI_TICKET[tipo]) return json({ errore: "Tipo di richiesta non valido" }, 400);
     const testo = String(b.testo || "").trim().slice(0, 1000);
     const aperti = (await env.DB.prepare("SELECT COUNT(*) n FROM ticket WHERE utente=? AND stato='aperto'").bind(me.nome).first()).n;
-    if (aperti >= 5) return json({ errore: "Hai gia' 5 richieste aperte: attendi che vengano gestite" }, 429);
+    if (aperti >= 5) return json({ errore: "Hai già 5 richieste aperte: attendi che vengano gestite" }, 429);
     let extra = null;
     if (tipo === "tessera") {
       const tag = String(b.tessera || "").toUpperCase();
@@ -1849,7 +1849,7 @@ async function ticket(req, env, me, url) {
       extra = nuovo;
     } else if (tipo === "nuova") {
       const gia = (await env.DB.prepare("SELECT COUNT(*) n FROM ticket WHERE utente=? AND tipo='nuova' AND stato='aperto'").bind(me.nome).first()).n;
-      if (gia) return json({ errore: "Hai gia' una richiesta di nuova tessera aperta: attendi che venga gestita" }, 400);
+      if (gia) return json({ errore: "Hai già una richiesta di nuova tessera aperta: attendi che venga gestita" }, 400);
       const pg = await leggiMeta(env, "pagamento_tessera", {});
       const met = String(b.pagamento || "contanti");
       if (met !== "contanti" && !(["paypal", "satispay", "revolut"].includes(met) && pg[met])) return json({ errore: "Metodo di pagamento non disponibile" }, 400);
@@ -1881,7 +1881,7 @@ async function ticket(req, env, me, url) {
   if (b.azione === "integra") {                      // the user adds information to one of their open tickets (instead of opening more)
     const r = await env.DB.prepare("SELECT * FROM ticket WHERE id=? AND utente=?").bind(+b.id || 0, me.nome).first();
     if (!r) return json({ errore: "Ticket non trovato" }, 404);
-    if (r.stato !== "aperto") return json({ errore: "Ticket gia' gestito: non si puo' piu' integrare" }, 400);
+    if (r.stato !== "aperto") return json({ errore: "Ticket già gestito: non si può più integrare" }, 400);
     const testo = String(b.testo || "").trim().slice(0, 1000);
     if (!testo) return json({ errore: "Scrivi il messaggio" }, 400);
     const t = await ticketLeggi(env, r);
@@ -1910,7 +1910,7 @@ async function ticket(req, env, me, url) {
   if (b.azione === "gestisci") {
     const r = await env.DB.prepare("SELECT * FROM ticket WHERE id=?").bind(+b.id || 0).first();
     if (!r) return json({ errore: "Ticket non trovato" }, 404);
-    if (r.stato !== "aperto") return json({ errore: "Ticket gia' gestito" }, 400);
+    if (r.stato !== "aperto") return json({ errore: "Ticket già gestito" }, 400);
     const t = await ticketLeggi(env, r);
     const esito = { approva: "approvato", rifiuta: "rifiutato", chiudi: "chiuso", ritrovata: "chiuso" }[b.esito];
     if (!esito) return json({ errore: "Esito non valido" }, 400);
@@ -1920,7 +1920,7 @@ async function ticket(req, env, me, url) {
     const det = [];                                   // outcome details for the email to the user: functions of the language
     const u = await env.DB.prepare("SELECT nome, ruolo, tessera, tessere_altre, lingua FROM utenti WHERE nome=?").bind(t.utente).first();
     if (esito === "approvato") {
-      if (!u) return json({ errore: "L'utente non esiste piu'" }, 404);
+      if (!u) return json({ errore: "L'utente non esiste più" }, 404);
       if (u.ruolo === "admin") return json({ errore: "Non applicabile all'admin" }, 400);
       if (t.tipo === "tessera") {
         const vecchia = t.extra && t.extra.tessera, tutte = tessereDi(u).filter((x) => x !== vecchia);
@@ -1940,7 +1940,7 @@ async function ticket(req, env, me, url) {
         const ok = await env.DB.prepare("SELECT tag FROM tessere WHERE tag=?").bind(nuova).first();
         if (!ok) return json({ errore: "Tessera non trovata: scarica prima dalla colonnina" }, 400);
         const altro = await env.DB.prepare("SELECT nome FROM utenti WHERE nome<>? AND (tessera=? OR tessere_altre LIKE ?)").bind(u.nome, nuova, `%"${nuova}"%`).first();
-        if (altro) return json({ errore: "Tessera gia' assegnata a un altro utente" }, 400);
+        if (altro) return json({ errore: "Tessera già assegnata a un altro utente" }, 400);
         const tutte = tessereDi(u);
         if (!tutte.includes(nuova)) tutte.push(nuova);
         await env.DB.prepare("UPDATE utenti SET tessera=?, tessere_altre=? WHERE nome=?")
@@ -2064,14 +2064,27 @@ const PW_FORTE = (p) => p.length >= 12 && p.length <= 128 && /[a-z]/.test(p) && 
 const TEL_OK = /^\+[1-9][0-9]{7,14}$/;
 const nomePulito = (t) => String(t || "").replace(/\s+/g, " ").trim().slice(0, 60);
 
-// "Service activation" email: sent when a self-registered user has confirmed the email and has a card linked
-async function mailAttivazione(env, email, nomeP, tess, origin) {
+// "Your access is active" email: sent when a self-registered user has confirmed the email and has a card linked.
+// Whoever has not chosen a password yet gets a new link (72 hours, single use), as in Monitoring; if a link is still valid
+// (the person is choosing the password right now) it is not replaced and the email points to "Forgot your password?".
+// senzaLink: the email goes out while the person is on the password page (email confirmed with the card already linked).
+async function mailAttivazione(env, email, nomeP, tess, origin, senzaLink) {
   const t = await env.DB.prepare("SELECT nome FROM tessere WHERE tag=?").bind(tess).first();
   const dett = `${tess}${t && t.nome ? " (" + t.nome + ")" : ""}`, lin = lingueMessaggio(await linguaDi(env, email));
-  return await inviaMail(env, email, `${lin.map((l) => tm(l, "Attivazione del servizio")).join(" / ")} - ${TITOLO}`,
+  const u = await env.DB.prepare("SELECT pw_scegliere, invito_exp FROM utenti WHERE nome=?").bind(email).first();
+  let link = null, vivo = false;
+  if (u && u.pw_scegliere && !senzaLink && u.invito_exp > Date.now() / 1000) vivo = true;
+  else if (u && u.pw_scegliere && !senzaLink) {
+    const tok = hex(crypto.getRandomValues(new Uint8Array(32)));
+    await env.DB.prepare("UPDATE utenti SET invito_hash=?, invito_exp=? WHERE nome=?").bind(await sha256(tok), Math.floor(Date.now() / 1000) + DURATA_INVITO, email).run();
+    link = `${origin}/?recupero=${tok}&e=${encodeURIComponent(email)}&prima=1`;
+  }
+  const bott = (href, t) => `<p><a href="${href}" style="display:inline-block;background:#0b6bcb;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${esc(t)}</a></p>`;
+  return await inviaMail(env, email, `${lin.map((l) => tm(l, "Il tuo accesso è attivo")).join(" / ")} - ${TITOLO}`,
     mailHtml(lin, (l) => testata(l) + `<p>${esc(tm(l, "Buongiorno {nome},", { nome: nomeP || "" }))}</p>` +
-      `<p><b>${esc(tm(l, "Utenza attivata: puoi accedere al sito."))}</b></p><p>${esc(tm(l, "La tessera {tag} è stata abbinata al tuo account: ora puoi consultare le tue ricariche.", { tag: dett }))}</p>` +
-      `<p><a href="${origin}/" style="display:inline-block;background:#0b6bcb;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${esc(tm(l, "Accedi"))}</a></p>`));
+      `<p>${esc(tm(l, "l’Amministratore ha abbinato la tessera {tag} al tuo account: quando entri trovi le tue ricariche.", { tag: dett }))}</p>` +
+      (link ? `<p>${esc(tm(l, "Non hai ancora scelto la password: sceglila con il pulsante qui sotto. Il link è personale, vale 72 ore e si può usare una volta sola."))}</p>` + bott(link, tm(l, "Scegli la password"))
+        : (vivo ? `<p>${esc(tm(l, "Se non hai ancora scelto la password, usa «Password dimenticata?» nella pagina di accesso."))}</p>` : "") + bott(origin + "/", tm(l, "Entra")))));
 }
 
 // ---------------------------------------------------- Cloudflare usage (admin only)
@@ -2146,7 +2159,7 @@ function datiProfilo(b, edizione) {
   if (!TEL_OK.test(t1)) return { errore: "Numero di telefono non valido" };
   if (t2 && !TEL_OK.test(t2)) return { errore: "Secondo numero di telefono non valido" };
   if (b.reg !== true) return { errore: "Devi accettare il regolamento" };
-  if (b.priv !== true) return { errore: "Devi confermare di aver letto l'informativa privacy" };
+  if (b.priv !== true) return { errore: "Conferma di aver letto l’informativa sulla privacy" };
   return { d: { nomeP, cognome, t1, t2, consensi: { edizione: edizione || "", regolamento: true, privacy: true, data: new Date().toISOString() } } };
 }
 async function cifraProfilo(env, email, d) {
@@ -2165,20 +2178,22 @@ async function registrazione(req, env) {
   const chiave = "reg:" + ipLimite(req);
   if ((await env.DB.prepare("SELECT COUNT(*) n FROM tentativi WHERE nome=?").bind(chiave).first()).n >= 5)
     return json({ errore: "Troppe registrazioni da questo indirizzo: riprova tra 10 minuti" }, 429);
+  // site-wide cap, as in Monitoring: at most 30 registrations in the last hour
+  if ((await env.DB.prepare("SELECT COUNT(*) n FROM utenti WHERE registrato_il > ?").bind(new Date((ora - 3600) * 1000).toISOString()).first()).n >= 30)
+    return json({ errore: "Troppe registrazioni nell'ultima ora: riprova più tardi" }, 429);
   await env.DB.prepare("INSERT INTO tentativi VALUES (?, ?)").bind(chiave, ora).run();
 
   if (!(await verificaTurnstile(env, b.turnstile, ip))) return json({ errore: "Verifica anti-robot non superata: riprova" }, 400);
-  const email = String(b.email || "").trim().toLowerCase(), pw = String(b.password || "");
+  const email = String(b.email || "").trim().toLowerCase();
   const nomeP = nomePulito(b.nome), cognome = nomePulito(b.cognome);
   const t1 = String(b.tel1 || "").replace(/\s/g, ""), t2 = String(b.tel2 || "").replace(/\s/g, "");
   const lingua = LINGUE[b.lang] ? b.lang : null, lin = lingueMessaggio(lingua);   // language of the registration page
   if (!nomeP || !cognome) return json({ errore: "Inserisci nome e cognome" }, 400);
   if (!EMAIL_OK.test(email) || email.length > 120) return json({ errore: "Indirizzo email non valido" }, 400);
-  if (!PW_FORTE(pw)) return json({ errore: "La password non rispetta i requisiti" }, 400);
   if (!TEL_OK.test(t1)) return json({ errore: "Numero di telefono non valido" }, 400);
   if (t2 && !TEL_OK.test(t2)) return json({ errore: "Secondo numero di telefono non valido" }, 400);
   if (b.reg !== true) return json({ errore: "Devi accettare il regolamento" }, 400);
-  if (b.priv !== true) return json({ errore: "Devi confermare di aver letto l'informativa privacy" }, 400);
+  if (b.priv !== true) return json({ errore: "Conferma di aver letto l’informativa sulla privacy" }, 400);
 
   // registrations never confirmed: freed after 24 hours
   await env.DB.prepare("DELETE FROM utenti WHERE verifica_hash IS NOT NULL AND verifica_exp < ?").bind(ora).run();
@@ -2186,21 +2201,23 @@ async function registrazione(req, env) {
   const ok = json({ ok: true });                                         // same answer if the address is already used: nobody can find out who is registered
   if (es && !es.verifica_hash) {
     await inviaMail(env, email, `${TITOLO}`, mailHtml(lin, (l) => testata(l) +
-      `<p>${esc(tm(l, "Per questo indirizzo esiste già un account: accedi dalla pagina iniziale. Se non ricordi la password chiedi all'Amministratore di reimpostarla."))}</p>`));
+      `<p>${esc(tm(l, "Hai già un accesso con questo indirizzo email: entra dalla pagina di accesso oppure usa «Password dimenticata?» se non ricordi la password."))}</p>` +
+      `<p><a href="${new URL(req.url).origin}/" style="display:inline-block;background:#0b6bcb;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${esc(tm(l, "Entra"))}</a></p>`));
     return ok;
   }
   const tok = hex(crypto.getRandomValues(new Uint8Array(32)));
-  const c = await nuovaCredenziale(pw);
+  // no password at registration (as in Monitoring): a random one nobody knows, chosen by whoever confirms the email
+  const c = await nuovaCredenziale(hex(crypto.getRandomValues(new Uint8Array(32))));
   const consensi = JSON.stringify({ edizione: (await leggiTesti(env)).edizione, regolamento: true, privacy: true, data: new Date().toISOString() });
   const cf = { cognome: await cifra(env, cognome, email + "|cognome"), nome_proprio: await cifra(env, nomeP, email + "|nome_proprio"), tel1: await cifra(env, t1, email + "|tel1"),
     tel2: await cifra(env, t2 || null, email + "|tel2"), consensi: await cifra(env, consensi, email + "|consensi") };
   const exp = ora + DURATA_CONFERMA;
   const perm = leggiPermessi({});                                         // no permissions until the Administrator links the card
   if (es) {
-    await env.DB.prepare("UPDATE utenti SET salt=?, hash=?, cognome=?, nome_proprio=?, tel1=?, tel2=?, verifica_hash=?, verifica_exp=?, consensi=?, registrato_il=?, lingua=? WHERE nome=?")
+    await env.DB.prepare("UPDATE utenti SET salt=?, hash=?, cognome=?, nome_proprio=?, tel1=?, tel2=?, verifica_hash=?, verifica_exp=?, consensi=?, registrato_il=?, lingua=?, pw_scegliere=1 WHERE nome=?")
       .bind(c.salt, c.hash, cf.cognome, cf.nome_proprio, cf.tel1, cf.tel2, await sha256(tok), exp, cf.consensi, new Date().toISOString(), lingua, email).run();
   } else {
-    await env.DB.prepare("INSERT INTO utenti (nome, salt, hash, ruolo, permessi, cognome, nome_proprio, tel1, tel2, verifica_hash, verifica_exp, consensi, registrato_il, lingua) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    await env.DB.prepare("INSERT INTO utenti (nome, salt, hash, ruolo, permessi, cognome, nome_proprio, tel1, tel2, verifica_hash, verifica_exp, consensi, registrato_il, lingua, pw_scegliere) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)")
       .bind(email, c.salt, c.hash, "utente", perm, cf.cognome, cf.nome_proprio, cf.tel1, cf.tel2, await sha256(tok), exp, cf.consensi, new Date().toISOString(), lingua).run();
   }
   const link = `${new URL(req.url).origin}/?verifica=${tok}&e=${encodeURIComponent(email)}`;
@@ -2208,14 +2225,15 @@ async function registrazione(req, env) {
   const bottone = (t) => `<p><a href="${link}" style="display:inline-block;background:#0b6bcb;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${t}</a></p>`;
   const mail = await inviaMail(env, email, `${lin.map((l) => tm(l, "Conferma di registrazione")).join(" / ")} - ${TITOLO}`,
     mailHtml(lin, (l) => testata(l) + `<p>${esc(tm(l, "Buongiorno {nome},", { nome: nomeP }))}</p>` +
-      // the template holds <b>: the only variable part (the card cost, from Settings) is escaped
-      `<p>${tm(l, "abbiamo ricevuto la tua registrazione. Per completarla conferma il tuo indirizzo email dal pulsante qui sotto (il link vale 24 ore): subito dopo ti chiederemo di scegliere la password e potrai accedere al sito. Se hai già la tessera, l'Amministratore la abbinerà al tuo account e riceverai la mail di <b>Attivazione del servizio</b>; se non ce l'hai, potrai richiederla dalla pagina Assistenza{costo}.",
-        { costo: costo ? esc(tm(l, " (costo {costo} una tantum: ti contatteremo per consegna e pagamento)", { costo })) : "" })}</p>` +
-      bottone(esc(tm(l, "Conferma l'indirizzo email"))),
-    `<p style="color:#555;font-size:13px">${esc(lin.map((l) => tm(l, "Se non hai chiesto tu la registrazione ignora questa mail")).join(" / "))}.<br>${link}</p>`));
+      `<p>${esc(tm(l, "abbiamo ricevuto la tua registrazione. Per completarla, conferma il tuo indirizzo email con il pulsante qui sotto e poi scegli la password. Il link vale 24 ore."))}</p>` +
+      bottone(esc(tm(l, "Conferma l’indirizzo email"))) +
+      `<p>${esc(tm(l, "Poi l’Amministratore abbinerà la tua tessera al tuo account e riceverai un’email. Fino ad allora potrai entrare, ma non vedrai le tue ricariche. Se non hai ancora la tessera, potrai richiederla dalla pagina Assistenza{costo}.",
+        { costo: costo ? tm(l, " (costo {costo} una tantum)", { costo }) : "" }))}</p>` +
+      `<p>${esc(tm(l, "Se non hai chiesto tu la registrazione, ignora questa email."))}</p>`,
+    `<p style="color:#555;font-size:13px">${esc(lin.map((l) => tm(l, "Se il pulsante non funziona copia questo indirizzo nel browser")).join(" / "))}:<br>${link}</p>`));
   if (mail !== "inviata") {
     await env.DB.prepare("DELETE FROM utenti WHERE nome=? AND verifica_hash IS NOT NULL").bind(email).run();
-    return json({ errore: "Non sono riuscito a inviare la mail di conferma: riprova più tardi" }, 502);
+    return json({ errore: "Non è stato possibile inviare l’email di conferma: riprova più tardi" }, 502);
   }
   return ok;
 }
@@ -2227,28 +2245,26 @@ async function confermaEmail(url, env) {
   const valido = u && u.verifica_hash && u.verifica_exp >= Date.now() / 1000 && uguali(u.verifica_hash, await sha256(tok));
   let scegli = null;
   if (valido) {
-    // whoever typed the password at registration may not own the mailbox (pre-hijacking): that password dies here and
-    // whoever opened the link chooses their own, from the same page as the password recovery (link valid one hour)
+    // the random password of the registration is replaced anyway (pre-hijacking): whoever opened the link chooses their own,
+    // from the same page as the password recovery (link valid one hour)
     scegli = hex(crypto.getRandomValues(new Uint8Array(32)));
     const morta = await nuovaCredenziale(hex(crypto.getRandomValues(new Uint8Array(32))));
     await env.DB.prepare("UPDATE utenti SET verifica_hash=NULL, verifica_exp=NULL, salt=?, hash=?, invito_hash=?, invito_exp=? WHERE nome=?")
       .bind(morta.salt, morta.hash, await sha256(scegli), Math.floor(Date.now() / 1000) + 3600, email).run();
     const x = await env.DB.prepare("SELECT tessera, nome_proprio, cognome, tel1, tel2 FROM utenti WHERE nome=?").bind(email).first();
     if (x) for (const c of ["nome_proprio", "cognome", "tel1", "tel2"]) x[c] = await decifra(env, x[c], email + "|" + c);
-    if (x && x.tessera) await mailAttivazione(env, email, x.nome_proprio, x.tessera, url.origin);
+    if (x && x.tessera) await mailAttivazione(env, email, x.nome_proprio, x.tessera, url.origin, true);
     else if (x) {                       // notify the administrator (malfunction recipients): there is a card to link
       const m = await leggiMalf(env);
       if (!m.a.length) await notifica(env, "Nuova registrazione da attivare", `${x.nome_proprio} ${x.cognome} (${email}, ${x.tel1}): abbina la tessera in Utenti`);
       else await inviaMail(env, m.a, `Nuova registrazione da attivare - ${TITOLO}`,
         mailMalf("Nuova registrazione confermata: serve abbinare la tessera", [`Nome: ${x.nome_proprio} ${x.cognome}`, `Email: ${email}`, `Telefono: ${x.tel1}${x.tel2 ? " / " + x.tel2 : ""}`,
-          "Per attivarla: apri Utenti, premi \"Attiva utenza\" sulla riga dell'utente, scegli la tessera e conferma. All'utente parte la mail \"Utenza attivata: puoi accedere al sito\"."]), m.cc);
+          "Per attivarla: apri Utenti, premi «Attiva» sulla riga della persona, scegli la tessera e salva. Alla persona arriva l’email «Il tuo accesso è attivo»."]), m.cc);
     }
   }
-  if (scegli) return new Response(null, { status: 302, headers: { location: `/?recupero=${scegli}&e=${encodeURIComponent(email)}`, "cache-control": "no-store" } });
-  const costo = costoTessera(await leggiConfig(env));
-  const msg = valido
-    ? `<h2>Email confermata / Email confirmed</h2><p>Ora puoi accedere al sito. Se hai già la tessera, l'Amministratore la abbinerà al tuo account e riceverai la mail di Attivazione del servizio; altrimenti puoi richiederla dalla pagina Assistenza${costo ? " (costo " + costo + " una tantum)" : ""}.</p><p>You can now sign in. If you already have a card, the Administrator will link it to your account and you will receive the Service activation email; otherwise you can request one from the Support page${costo ? " (one-off cost " + costo + ")" : ""}.</p>`
-    : `<h2>Link non valido o scaduto / Invalid or expired link</h2><p>Se la registrazione risale a più di 24 ore fa, registrati di nuovo.</p><p>If you registered more than 24 hours ago, please register again.</p>`;
+  if (scegli) return new Response(null, { status: 302, headers: { location: `/?recupero=${scegli}&e=${encodeURIComponent(email)}&confermata=1`, "cache-control": "no-store" } });
+  const msg = `<h2>Link non valido / Invalid link</h2><p>Questo link di conferma non è più valido: vale 24 ore e una volta sola. Se non hai ancora confermato, registrati di nuovo con lo stesso indirizzo. Se l’hai già fatto, entra dalla pagina di accesso o usa «Password dimenticata?».</p>` +
+    `<p>This confirmation link is no longer valid: it lasts 24 hours and works only once. If you have not confirmed yet, register again with the same address. If you already have, sign in from the sign-in page or use «Forgot your password?».</p>`;
   return new Response(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${TITOLO}</title>` +
     `<style>body{font:16px/1.5 system-ui,sans-serif;max-width:480px;margin:12vh auto;padding:0 20px;color:#14181f;background:#f6f7f9}a{color:#0b6bcb}@media(prefers-color-scheme:dark){body{background:#12151a;color:#e8ecf1}a{color:#5aa6ff}}</style></head>` +
     `<body>${msg}<p><a href="/">Vai alla pagina di accesso / Go to the sign-in page</a></p></body></html>`,
@@ -2266,7 +2282,7 @@ async function accettaInvito(req, env) {
   if (!u || !u.invito_hash || u.invito_exp < Date.now() / 1000 || !uguali(u.invito_hash, await sha256(String(b.token || ""))))
     return json({ errore: "Link non valido o scaduto: chiedi un nuovo invito" }, 400);
   const c = await nuovaCredenziale(pw), cf = await cifraProfilo(env, nome, p.d);
-  await env.DB.prepare("UPDATE utenti SET salt=?, hash=?, invito_hash=NULL, invito_exp=NULL, verifica_hash=NULL, verifica_exp=NULL, cognome=?, nome_proprio=?, tel1=?, tel2=?, consensi=?, profilo_il=? WHERE nome=?")
+  await env.DB.prepare("UPDATE utenti SET salt=?, hash=?, invito_hash=NULL, invito_exp=NULL, verifica_hash=NULL, verifica_exp=NULL, pw_scegliere=NULL, cognome=?, nome_proprio=?, tel1=?, tel2=?, consensi=?, profilo_il=? WHERE nome=?")
     .bind(c.salt, c.hash, cf.cognome, cf.nome_proprio, cf.tel1, cf.tel2, cf.consensi, new Date().toISOString(), nome).run();
   const r = json({ ok: true });
   r.headers.append("set-cookie", cookie(await creaToken(env, { nome, hash: c.hash }), DURATA_SESSIONE));
@@ -2301,7 +2317,7 @@ async function recuperoPassword(req, env, url) {
     if (!u || !u.hash || u.verifica_hash || !u.invito_hash || u.invito_exp < ora || !uguali(u.invito_hash, await sha256(String(b.token))))
       return json({ errore: "Link non valido o scaduto: chiedi di nuovo il recupero della password" }, 400);
     const c = await nuovaCredenziale(pw);
-    await env.DB.prepare("UPDATE utenti SET salt=?, hash=?, invito_hash=NULL, invito_exp=NULL WHERE nome=?").bind(c.salt, c.hash, nome).run();   // new hash: old sessions end
+    await env.DB.prepare("UPDATE utenti SET salt=?, hash=?, invito_hash=NULL, invito_exp=NULL, pw_scegliere=NULL WHERE nome=?").bind(c.salt, c.hash, nome).run();   // new hash: old sessions end
     const r = json({ ok: true });
     r.headers.append("set-cookie", cookie(await creaToken(env, { nome, hash: c.hash }), DURATA_SESSIONE));
     return r;
@@ -2316,7 +2332,7 @@ async function recuperoPassword(req, env, url) {
     const lin = lingueMessaggio(u.lingua);
     await inviaMail(env, nome, `${lin.map((l) => tm(l, "Nuova password")).join(" / ")} - ${TITOLO}`, mailRighe(lin.map((l) => ({ l, tit: tm(l, "Recupero della password"),
       righe: [tm(l, "Hai chiesto di scegliere una nuova password per l'accesso {nome}.", { nome }), tm(l, "Apri questo link entro un'ora:"), link,
-        tm(l, "Se non sei stato tu, ignora questa mail: la password attuale resta valida.")] }))));
+        tm(l, "Se non l'hai chiesto tu, ignora questa email: la password attuale resta valida.")] }))));
   }
   return json({ ok: true });
 }
@@ -2416,7 +2432,7 @@ export class Colonnina {
             this.put("lista_v", vc); this.put("lista_v_firma", this.get("lista_firma_attesa"));
             this.put("coda", (this.get("coda") || []).filter((x) => x.azione !== "SendLocalList"));
             const l = this.get("lista") || {}; this.put("lista", { ...l, inviate: l.n, ok: true, invariata: true });
-            this.log("sys", "Lista tessere gia' aggiornata sulla colonnina (versione " + vc + "): non la rimando");
+            this.log("sys", "Lista tessere già aggiornata sulla colonnina (versione " + vc + "): non la rimando");
           }
         }
         await this.prossimo();
@@ -2506,7 +2522,7 @@ export class Colonnina {
     try {
       const n = await ripristinaNomi(this.env);
       if (n >= 0) { this.put("nomi_pendenti", false); if (n > 0) this.log("sys", `Nomi tessere rimessi sulla colonnina: ${n}`); }
-      else this.log("sys", "Nomi tessere da rimettere: colonnina occupata, riprovo piu' tardi");
+      else this.log("sys", "Nomi tessere da rimettere: colonnina occupata, riprovo più tardi");
     } catch (e) { this.log("sys", "nomi tessere non rimessi: " + (e.message || e)); }
     finally { this.rimettendo = false; }
   }
@@ -2597,7 +2613,7 @@ export class Colonnina {
     switch (azione) {
       case "BootNotification": {
         const rt = this.get("reset_ts");
-        if (!(rt && Date.now() - rt < 600000)) this.malfEvento("riavvio", "La colonnina si e' riavviata senza una richiesta dal sito" + (p.firmwareVersion ? " (firmware " + p.firmwareVersion + ")" : ""));
+        if (!(rt && Date.now() - rt < 600000)) this.malfEvento("riavvio", "La colonnina si è riavviata senza una richiesta dal sito" + (p.firmwareVersion ? " (firmware " + p.firmwareVersion + ")" : ""));
         this.put("boot", { ...p, ts: adesso }); return { status: "Accepted", currentTime: adesso, interval: this.hbVoluto() };
       }
       case "Heartbeat": return { currentTime: adesso };
@@ -2694,7 +2710,7 @@ export class Colonnina {
   }
   nomeMsg(a) { return { BootNotification: "avvio", Authorize: "tessera", StartTransaction: "inizio ricarica", StopTransaction: "fine ricarica", Heartbeat: "conferma collegamento", StatusNotification: "stato presa", MeterValues: "misura", DataTransfer: "dati" }[a] || a; }
   esitoRisposta(p) {                                      // server replies that carry an outcome (card, charge, boot): in words
-    const TAG = { Accepted: "tessera accettata", Blocked: "tessera bloccata", Invalid: "tessera non valida", Expired: "tessera scaduta", ConcurrentTx: "tessera gia' in uso" };
+    const TAG = { Accepted: "tessera accettata", Blocked: "tessera bloccata", Invalid: "tessera non valida", Expired: "tessera scaduta", ConcurrentTx: "tessera già in uso" };
     const x = [];
     if (p.idTagInfo && p.idTagInfo.status) x.push(TAG[p.idTagInfo.status] || p.idTagInfo.status);
     if (p.transactionId !== undefined) x.push("ricarica n. " + p.transactionId);
@@ -2761,7 +2777,7 @@ async function eseguiSetup(req, env, cfg) {
   // atomic: inserts only if there is still no administrator
   const r = await env.DB.prepare("INSERT INTO utenti (nome, salt, hash, ruolo) SELECT ?, ?, ?, 'admin' WHERE NOT EXISTS (SELECT 1 FROM utenti WHERE ruolo='admin')")
     .bind(nome, c.salt, c.hash).run();
-  if (!r.meta.changes) return json({ errore: "Configurazione gia' completata" }, 409);
+  if (!r.meta.changes) return json({ errore: "Configurazione già completata" }, 409);
   await env.DB.prepare("INSERT OR REPLACE INTO meta VALUES ('config', ?)").bind(JSON.stringify(nuova)).run();
   const out = json({ ok: true });
   out.headers.append("set-cookie", cookie(await creaToken(env, { nome, hash: c.hash }), DURATA_SESSIONE));
@@ -2986,7 +3002,7 @@ export default {
         if (req.method === "GET") {
           try { await migraCifratura(env); } catch (_) { /* retry at the next run */ }
           const righe = (await env.DB.prepare(
-            "SELECT u.nome, u.ruolo, u.permessi, u.hash, u.invito_exp, u.tessera, u.cognome, u.nome_proprio, u.tel1, u.tel2, u.verifica_hash, u.verifica_exp, u.consensi, u.registrato_il, u.profilo_il, u.tessere_altre, t.nome AS tessera_nome " +
+            "SELECT u.nome, u.ruolo, u.permessi, u.hash, u.invito_exp, u.tessera, u.cognome, u.nome_proprio, u.tel1, u.tel2, u.verifica_hash, u.verifica_exp, u.consensi, u.registrato_il, u.profilo_il, u.tessere_altre, u.pw_scegliere, t.nome AS tessera_nome " +
             "FROM utenti u LEFT JOIN tessere t ON t.tag = u.tessera ORDER BY u.ruolo, u.nome").all()).results;
           const nomiTess = Object.fromEntries((await env.DB.prepare("SELECT tag, nome FROM tessere").all()).results.map((x) => [x.tag, x.nome]));
           const lista = [];
@@ -2996,7 +3012,7 @@ export default {
               const d = {}; for (const c of CAMPI_CIFRATI) d[c] = await decifra(env, u[c], u.nome + "|" + c);
               an = { nome: d.nome_proprio, cognome: d.cognome, tel1: d.tel1, tel2: d.tel2, data: u.registrato_il || u.profilo_il, da_confermare: !!u.verifica_hash };
             }
-            lista.push({ nome: u.nome, ruolo: u.ruolo, perm: permessiDi(u), attivo: !!u.hash && !u.verifica_hash && !(u.registrato_il && !u.tessera), in_attesa_tessera: !!u.registrato_il && !u.tessera && !u.verifica_hash,
+            lista.push({ nome: u.nome, ruolo: u.ruolo, perm: permessiDi(u), attivo: !!u.hash && !u.verifica_hash && !(u.registrato_il && !u.tessera), in_attesa_tessera: !!u.registrato_il && !u.tessera && !u.verifica_hash, pw_da_scegliere: !!u.pw_scegliere && !u.verifica_hash,
               tessera: u.tessera, tessera_nome: u.tessera_nome, tessere_altre: tessereDi({ tessere_altre: u.tessere_altre }).map((tag) => ({ tag, nome: nomiTess[tag] || "" })), anagrafica: an, invito_scaduto: !u.hash && u.invito_exp < Date.now() / 1000 });
           }
           return json(lista);
@@ -3102,8 +3118,8 @@ export default {
           if (b.azione === "prova") {
             const c = await leggiMalf(env);
             if (!c.a.length) return json({ errore: "Inserisci almeno un destinatario" }, 400);
-            const m = await inviaMail(env, c.a, `Prova avvisi - ${TITOLO}`, mailMalf("Prova avvisi", ["Questa è una mail di prova: gli avvisi arriveranno a questi destinatari.", "This is a test message."]), c.cc);
-            return json({ ok: m === "inviata", mail: m, errore: m === "inviata" ? undefined : "Mail non inviata: " + m });
+            const m = await inviaMail(env, c.a, `Prova avvisi - ${TITOLO}`, mailMalf("Prova avvisi", ["Questa è un’email di prova: gli avvisi arriveranno a questi destinatari.", "This is a test message."]), c.cc);
+            return json({ ok: m === "inviata", mail: m, errore: m === "inviata" ? undefined : "Email non inviata: " + m });
           }
           if (b.azione === "avvisi") {
             const at = Math.round(Number(b.attesa)), so = Math.round(Number(b.sollecito));
@@ -3328,7 +3344,7 @@ export default {
         if (na !== null && na <= nd) return json({ errore: "La dismissione deve essere dopo l'assegnazione" }, 400);
         try {
           await env.DB.prepare("UPDATE tessere_nomi SET dal=?, al=? WHERE tag=? AND dal=?").bind(nd, na, String(q2.tag), +q2.dal).run();
-        } catch (e) { return json({ errore: "Esiste gia' un periodo con quella data" }, 400); }
+        } catch (e) { return json({ errore: "Esiste già un periodo con quella data" }, 400); }
         return json({ ok: true });
       }
       if (url.pathname === "/api/prepagate") {             // prepaid cards: list with credit and usage (admin or "prepagate" permission); activation, credit, price, threshold, removal admin only
@@ -3456,7 +3472,7 @@ export default {
           const anno = +b.anno, mese = +b.mese;
           if (!(mese >= 1 && mese <= 12) || !(anno >= 2020 && anno <= 2100)) return json({ errore: "mese/anno non validi" }, 400);
           const es = await env.DB.prepare("SELECT 1 FROM prezzi WHERE anno=? AND mese=?").bind(anno, mese).first();
-          if (es) return json({ errore: "Prezzo gia' inserito: il mese e' bloccato e non si puo' piu' modificare" }, 423);
+          if (es) return json({ errore: "Prezzo già inserito: il mese è bloccato e non si può più modificare" }, 423);
           if (b.prezzo === null || b.prezzo === "") {
             await env.DB.prepare("DELETE FROM prezzi WHERE anno=? AND mese=?").bind(anno, mese).run();
           } else {

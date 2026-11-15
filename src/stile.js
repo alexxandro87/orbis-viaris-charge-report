@@ -19,7 +19,7 @@ export const STILE = [
   // fields
   "input,select,textarea{border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--tx);padding:8px 12px;min-height:40px;outline:none}",
   "input:focus,select:focus,textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}",
-  "input[type=checkbox],input[type=radio]{min-height:0;width:18px;height:18px;padding:0;accent-color:var(--acc)}",
+  "input[type=checkbox],input[type=radio]{min-height:0;width:18px;height:18px;padding:0;accent-color:var(--acc);flex:none}",
   "input[type=file]{min-height:0}",
   // buttons: all blue with the same style
   "button{cursor:pointer;background:var(--acc);border:1px solid var(--acc);color:var(--btx);border-radius:12px;min-height:40px;padding:8px 16px;font-weight:600}",
@@ -39,6 +39,8 @@ export const STILE = [
   "th,td{padding:8px 9px}th{font-weight:600}",
   "tr.cl:hover,tr.rs:hover td,tr.ut:hover td{background:var(--soft)}",
   "td button{min-height:32px;padding:4px 10px;font-size:13px;border-radius:10px}",
+  // users waiting for activation (counted next to "Utenti"): on top, highlighted row
+  "tr.nuovo td{background:rgba(184,120,10,.10)}tr.nuovo td:first-child{box-shadow:inset 4px 0 0 #b8780a}.stNuovo{display:inline-block;background:#b8780a;color:#fff;border-radius:999px;padding:2px 10px;font-weight:600;font-size:13px;white-space:nowrap}",
   // brand mark next to the title: blue square with a bolt
   ".marca{display:flex;align-items:center;gap:12px;min-width:0}",
   ".logo{flex:none;width:40px;height:40px;border-radius:12px;background:var(--acc);color:var(--btx);display:flex;align-items:center;justify-content:center}",
@@ -94,6 +96,8 @@ export const STILE = [
   // ---------- phone (up to 700 px): app-like look ----------
   "@media (max-width:700px){" + [
     "html,body{overflow-x:clip}body{background:var(--bg)}",
+    // user waiting for activation: the whole card highlighted
+    "tr.nuovo{background:rgba(184,120,10,.10);border-color:#b8780a!important;box-shadow:inset 4px 0 0 #b8780a}tr.nuovo td,tr.nuovo td:first-child{background:none;box-shadow:none}",
     // tables not turned into cards (e.g. Information): wrap instead of widening the page
     "table:not(.tbm) th,table:not(.tbm) td{white-space:normal;overflow-wrap:anywhere}",
     "header{padding:calc(14px + env(safe-area-inset-top)) 16px 12px;border-bottom:0;background:var(--bg)}",
