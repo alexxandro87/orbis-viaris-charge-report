@@ -36,14 +36,24 @@ async function verificaTurnstile(env, token, ip) {
     return !!(await r.json()).success;
   } catch (_) { return false; }
 }
+// key for the attempt limits: an IPv6 user owns a whole /64, so the limit counts the prefix
+// (else changing the last bits dodges it); IPv4 addresses are used as they are
+function ipLimite(req) {
+  const ip = (req.headers.get("cf-connecting-ip") || "?").toLowerCase();
+  if (!ip.includes(":")) return ip;
+  if (ip.includes(".")) return ip.split(":").pop();   // ::ffff:1.2.3.4
+  const [a, b] = ip.split("::"), testa = a ? a.split(":") : [], coda = b ? b.split(":") : [];
+  const tutti = b === undefined ? testa : [...testa, ...Array(Math.max(0, 8 - testa.length - coda.length)).fill("0"), ...coda];
+  return tutti.slice(0, 4).map((x) => x.replace(/^0+(?=.)/, "")).join(":") + "::/64";
+}
 // attempt limit per IP address (besides the one per user name): max errors in 10 minutes; returns true when blocked
 async function ipBloccato(env, req, cosa, max) {
-  const ip = req.headers.get("cf-connecting-ip") || "?", ora = Math.floor(Date.now() / 1000);
+  const ip = ipLimite(req), ora = Math.floor(Date.now() / 1000);
   await env.DB.prepare("DELETE FROM tentativi WHERE ts < ?").bind(ora - 600).run();
   return (await env.DB.prepare("SELECT COUNT(*) n FROM tentativi WHERE nome=?").bind(cosa + ":" + ip).first()).n >= max;
 }
 async function ipErrore(env, req, cosa) {
-  await env.DB.prepare("INSERT INTO tentativi VALUES (?, ?)").bind(cosa + ":" + (req.headers.get("cf-connecting-ip") || "?"), Math.floor(Date.now() / 1000)).run();
+  await env.DB.prepare("INSERT INTO tentativi VALUES (?, ?)").bind(cosa + ":" + ipLimite(req), Math.floor(Date.now() / 1000)).run();
 }
 
 let TITOLO = "EV Charger";            // site title (from Settings, set by leggiConfig on every request)
@@ -839,7 +849,7 @@ async function utenteCorrente(req, env) {
   if (h.startsWith("Basic ") && new URL(req.url).pathname === "/api/ingest") {
     try {
       const [n, ...r] = atob(h.slice(6)).split(":");
-      const u = await loginLimitato(env, n.trim().toLowerCase(), r.join(":"), req.headers.get("cf-connecting-ip"));
+      const u = await loginLimitato(env, n.trim().toLowerCase(), r.join(":"), ipLimite(req));
       if (u && !u.limite && !u.nonVerificato && !u.inAttesa) return u;
     } catch (_) { /* ignore */ }
   }
@@ -882,7 +892,7 @@ async function login(req, env) {
   const b = await req.json();
   const nome = String(b.nome || "").trim().toLowerCase(), pw = String(b.password || "");
   if (await ipBloccato(env, req, "ip", 20)) return json({ errore: "Troppi tentativi da questo indirizzo: riprova tra 10 minuti" }, 429);
-  const u = await loginLimitato(env, nome, pw, req.headers.get("cf-connecting-ip"));
+  const u = await loginLimitato(env, nome, pw, ipLimite(req));
   if (u && u.limite) return json({ errore: "Troppi tentativi: riprova tra 10 minuti" }, 429);
   if (!u) { await ipErrore(env, req, "ip"); return json({ errore: "Nome o password errati" }, 401); }
   if (u.nonVerificato) return json({ errore: "Devi prima confermare l'indirizzo email: controlla la tua posta" }, 403);
@@ -2152,7 +2162,7 @@ async function registrazione(req, env) {
   const ip = req.headers.get("cf-connecting-ip") || "?";
   const ora = Math.floor(Date.now() / 1000);
   await env.DB.prepare("DELETE FROM tentativi WHERE ts < ?").bind(ora - 600).run();
-  const chiave = "reg:" + ip;
+  const chiave = "reg:" + ipLimite(req);
   if ((await env.DB.prepare("SELECT COUNT(*) n FROM tentativi WHERE nome=?").bind(chiave).first()).n >= 5)
     return json({ errore: "Troppe registrazioni da questo indirizzo: riprova tra 10 minuti" }, 429);
   await env.DB.prepare("INSERT INTO tentativi VALUES (?, ?)").bind(chiave, ora).run();
@@ -2789,7 +2799,9 @@ export default {
     out.headers.set("content-security-policy", `default-src 'self'; script-src 'nonce-${nonce}' ${TS}; style-src 'unsafe-inline'; style-src-elem 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ${TS}; frame-src ${TS}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`);
     const rin = RINNOVI.get(req);                                   // sliding session expiry (not over login, logout and password change, which already set the cookie)
     if (rin && !out.headers.has("set-cookie")) out.headers.append("set-cookie", cookie(await creaToken(env, rin), DURATA_SESSIONE));
-    if (u.protocol === "https:") out.headers.set("strict-transport-security", "max-age=31536000");
+    if (u.protocol === "https:") out.headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
+    out.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");   // the site uses none of these features
+    out.headers.set("cross-origin-opener-policy", "same-origin");
     out.headers.set("x-frame-options", "DENY");                       // never inside someone else's iframe
     out.headers.set("x-content-type-options", "nosniff");
     out.headers.set("referrer-policy", "no-referrer");               // the invitation link never leaks through Referer
@@ -3380,7 +3392,7 @@ export default {
         const b = await req.json();
         if (!PW_FORTE(String(b.nuova || ""))) return json({ errore: "La nuova password deve avere almeno 12 caratteri con minuscola, maiuscola, numero e carattere speciale" }, 400);
         if (b.ripeti !== b.nuova) return json({ errore: "Le due nuove password non coincidono" }, 400);
-        const u = await loginLimitato(env, me.nome, String(b.vecchia || ""), req.headers.get("cf-connecting-ip"));   // same limit as sign-in
+        const u = await loginLimitato(env, me.nome, String(b.vecchia || ""), ipLimite(req));   // same limit as sign-in
         if (u && u.limite) return json({ errore: "Troppi tentativi: riprova tra 10 minuti" }, 429);
         if (!u) return json({ errore: "Password attuale errata" }, 400);
         const c = await nuovaCredenziale(String(b.nuova));
