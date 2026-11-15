@@ -738,6 +738,7 @@ const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PERMESSI = ["report", "storico", "sessioni", "prezzo", "stampa", "scarica", "app", "live", "prepagate"];   // "prepagate": prepaid cards tab, read only (off by default)
 const PERMESSI_DEFAULT = { report: 1, storico: 1, sessioni: 1, stampa: 1 };
 const DURATA_INVITO = 48 * 3600;
+const DURATA_CONFERMA = 24 * 3600;        // email confirmation link after self-registration
 function permessiDi(u) {
   if (u.tessera) return Object.fromEntries(PERMESSI.map((k) => [k, false]));   // charger user: sees only their own sessions
   if (u.ruolo === "admin") return Object.fromEntries(PERMESSI.map((k) => [k, true]));
@@ -2169,7 +2170,7 @@ async function registrazione(req, env) {
   if (b.reg !== true) return json({ errore: "Devi accettare il regolamento" }, 400);
   if (b.priv !== true) return json({ errore: "Devi confermare di aver letto l'informativa privacy" }, 400);
 
-  // registrations never confirmed: freed after 48 hours
+  // registrations never confirmed: freed after 24 hours
   await env.DB.prepare("DELETE FROM utenti WHERE verifica_hash IS NOT NULL AND verifica_exp < ?").bind(ora).run();
   const es = await env.DB.prepare("SELECT nome, verifica_hash FROM utenti WHERE nome=?").bind(email).first();
   const ok = json({ ok: true });                                         // same answer if the address is already used: nobody can find out who is registered
@@ -2183,7 +2184,7 @@ async function registrazione(req, env) {
   const consensi = JSON.stringify({ edizione: (await leggiTesti(env)).edizione, regolamento: true, privacy: true, data: new Date().toISOString() });
   const cf = { cognome: await cifra(env, cognome, email + "|cognome"), nome_proprio: await cifra(env, nomeP, email + "|nome_proprio"), tel1: await cifra(env, t1, email + "|tel1"),
     tel2: await cifra(env, t2 || null, email + "|tel2"), consensi: await cifra(env, consensi, email + "|consensi") };
-  const exp = ora + DURATA_INVITO;
+  const exp = ora + DURATA_CONFERMA;
   const perm = leggiPermessi({});                                         // no permissions until the Administrator links the card
   if (es) {
     await env.DB.prepare("UPDATE utenti SET salt=?, hash=?, cognome=?, nome_proprio=?, tel1=?, tel2=?, verifica_hash=?, verifica_exp=?, consensi=?, registrato_il=?, lingua=? WHERE nome=?")
@@ -2198,7 +2199,7 @@ async function registrazione(req, env) {
   const mail = await inviaMail(env, email, `${lin.map((l) => tm(l, "Conferma di registrazione")).join(" / ")} - ${TITOLO}`,
     mailHtml(lin, (l) => testata(l) + `<p>${esc(tm(l, "Buongiorno {nome},", { nome: nomeP }))}</p>` +
       // the template holds <b>: the only variable part (the card cost, from Settings) is escaped
-      `<p>${tm(l, "abbiamo ricevuto la tua registrazione. Per completarla conferma il tuo indirizzo email dal pulsante qui sotto (il link vale 48 ore): subito dopo ti chiederemo di scegliere la password e potrai accedere al sito. Se hai già la tessera, l'Amministratore la abbinerà al tuo account e riceverai la mail di <b>Attivazione del servizio</b>; se non ce l'hai, potrai richiederla dalla pagina Assistenza{costo}.",
+      `<p>${tm(l, "abbiamo ricevuto la tua registrazione. Per completarla conferma il tuo indirizzo email dal pulsante qui sotto (il link vale 24 ore): subito dopo ti chiederemo di scegliere la password e potrai accedere al sito. Se hai già la tessera, l'Amministratore la abbinerà al tuo account e riceverai la mail di <b>Attivazione del servizio</b>; se non ce l'hai, potrai richiederla dalla pagina Assistenza{costo}.",
         { costo: costo ? esc(tm(l, " (costo {costo} una tantum: ti contatteremo per consegna e pagamento)", { costo })) : "" })}</p>` +
       bottone(esc(tm(l, "Conferma l'indirizzo email"))),
     `<p style="color:#555;font-size:13px">${esc(lin.map((l) => tm(l, "Se non hai chiesto tu la registrazione ignora questa mail")).join(" / "))}.<br>${link}</p>`));
@@ -2237,7 +2238,7 @@ async function confermaEmail(url, env) {
   const costo = costoTessera(await leggiConfig(env));
   const msg = valido
     ? `<h2>Email confermata / Email confirmed</h2><p>Ora puoi accedere al sito. Se hai già la tessera, l'Amministratore la abbinerà al tuo account e riceverai la mail di Attivazione del servizio; altrimenti puoi richiederla dalla pagina Assistenza${costo ? " (costo " + costo + " una tantum)" : ""}.</p><p>You can now sign in. If you already have a card, the Administrator will link it to your account and you will receive the Service activation email; otherwise you can request one from the Support page${costo ? " (one-off cost " + costo + ")" : ""}.</p>`
-    : `<h2>Link non valido o scaduto / Invalid or expired link</h2><p>Se la registrazione risale a più di 48 ore fa, registrati di nuovo.</p><p>If you registered more than 48 hours ago, please register again.</p>`;
+    : `<h2>Link non valido o scaduto / Invalid or expired link</h2><p>Se la registrazione risale a più di 24 ore fa, registrati di nuovo.</p><p>If you registered more than 24 hours ago, please register again.</p>`;
   return new Response(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${TITOLO}</title>` +
     `<style>body{font:16px/1.5 system-ui,sans-serif;max-width:480px;margin:12vh auto;padding:0 20px;color:#14181f;background:#f6f7f9}a{color:#0b6bcb}@media(prefers-color-scheme:dark){body{background:#12151a;color:#e8ecf1}a{color:#5aa6ff}}</style></head>` +
     `<body>${msg}<p><a href="/">Vai alla pagina di accesso / Go to the sign-in page</a></p></body></html>`,
@@ -2255,7 +2256,7 @@ async function accettaInvito(req, env) {
   if (!u || !u.invito_hash || u.invito_exp < Date.now() / 1000 || !uguali(u.invito_hash, await sha256(String(b.token || ""))))
     return json({ errore: "Link non valido o scaduto: chiedi un nuovo invito" }, 400);
   const c = await nuovaCredenziale(pw), cf = await cifraProfilo(env, nome, p.d);
-  await env.DB.prepare("UPDATE utenti SET salt=?, hash=?, invito_hash=NULL, invito_exp=NULL, cognome=?, nome_proprio=?, tel1=?, tel2=?, consensi=?, profilo_il=? WHERE nome=?")
+  await env.DB.prepare("UPDATE utenti SET salt=?, hash=?, invito_hash=NULL, invito_exp=NULL, verifica_hash=NULL, verifica_exp=NULL, cognome=?, nome_proprio=?, tel1=?, tel2=?, consensi=?, profilo_il=? WHERE nome=?")
     .bind(c.salt, c.hash, cf.cognome, cf.nome_proprio, cf.tel1, cf.tel2, cf.consensi, new Date().toISOString(), nome).run();
   const r = json({ ok: true });
   r.headers.append("set-cookie", cookie(await creaToken(env, { nome, hash: c.hash }), DURATA_SESSIONE));
