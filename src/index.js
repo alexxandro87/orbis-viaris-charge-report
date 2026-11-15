@@ -2273,6 +2273,21 @@ async function accettaInvito(req, env) {
   return r;
 }
 
+// the page opened from the link received by mail (invitation or recovery) asks whether the link is still valid, so it can show
+// the notice right away instead of the form. It does not use up the link; same answer for a wrong, expired or used link or an
+// unknown user; negative answers count towards the limit per address. The real check stays the one on save.
+async function linkValido(req, env) {
+  let b; try { b = await req.json(); } catch (_) { return json({ errore: "Richiesta non valida" }, 400); }
+  await preparaTabelle(env);
+  if (await ipBloccato(env, req, "link", 20)) return json({ errore: "Troppe richieste da questo indirizzo: riprova tra 10 minuti" }, 429);
+  const nome = String(b.email || "").trim().toLowerCase().slice(0, 120), ora = Date.now() / 1000, h = await sha256(String(b.token || "").slice(0, 200));
+  const u = await env.DB.prepare("SELECT hash, invito_hash, invito_exp, verifica_hash FROM utenti WHERE nome=?").bind(nome).first();
+  let ok = !!u && !!u.invito_hash && !(u.invito_exp < ora) && uguali(u.invito_hash, h);
+  if (ok && b.tipo === "recupero") ok = !!u.hash && !u.verifica_hash;
+  if (!ok) await ipErrore(env, req, "link");
+  return json({ ok });
+}
+
 // password recovery from the login page: { nome } asks for the link (same answer whether the user exists or not),
 // { token, email, password } sets the new password. The token (1 hour) uses invito_hash/invito_exp, free for users who already have a password.
 async function recuperoPassword(req, env, url) {
@@ -2841,6 +2856,7 @@ export default {
       if (url.pathname === "/api/login" && req.method === "POST") return await login(req, env);
       if (url.pathname === "/api/invito" && req.method === "POST") return await accettaInvito(req, env);
       if (url.pathname === "/api/recupero" && req.method === "POST") return await recuperoPassword(req, env, url);
+      if (url.pathname === "/api/link" && req.method === "POST") return await linkValido(req, env);
       if (url.pathname === "/api/registrazione" && req.method === "POST") return await registrazione(req, env);
       if (url.pathname === "/" && req.method === "GET" && q.get("verifica")) return await confermaEmail(url, env);
       if (url.pathname === "/" && req.method === "GET" && (q.get("invito") || q.get("recupero")))

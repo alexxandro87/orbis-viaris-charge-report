@@ -1742,6 +1742,8 @@ details h4{margin:10px 0 3px;font-size:13px}details p,details li{margin:3px 0}
   <div class="marca"><span class="logo" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg></span><h1>__TITLE__ <span class="ver">__VERSION__</span></h1></div>
   <div class="sub" id="tit"></div>
   <div class="sub" id="chi"></div>
+  <div class="sub hide" id="nvm"></div>
+  <button type="button" class="p hide" id="nv" style="margin-top:12px">Vai alla pagina di accesso</button>
   <form id="g" autocomplete="on" novalidate>
     <div class="riga">
       <label>Nome<input id="rN" autocomplete="given-name" required></label>
@@ -1810,6 +1812,18 @@ if(COMPLETA){
   $("tit").textContent="Scegli una nuova password";$("chi").textContent=T("Utente: ")+mail;$("bR").textContent="Salva e accedi";
 }else{
   $("tit").textContent="Scegli la tua password e completa i tuoi dati";$("chi").textContent=T("Utente: ")+mail;
+}
+// link received by mail: on opening ask the server whether it is still valid; if not, show the notice instead of the form
+// (the check on save stays). On a network error or too many requests the form shows as before.
+if(tok&&!COMPLETA){
+  $("g").style.display="none";$("nv").onclick=function(){location.href="/"};
+  fetch("/api/link",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({tipo:REC?"recupero":"invito",token:tok,email:mail})})
+  .then(function(r){return r.json()}).then(function(r){
+    if(r.ok!==false){$("g").style.display="";return}
+    $("tit").textContent=T("Link non valido o scaduto");$("chi").textContent="";
+    $("nvm").textContent=T(REC?"Questo link per la nuova password non vale più: è scaduto oppure è già stato usato. Chiedine uno nuovo dalla pagina di accesso, con «Password dimenticata?».":"Questo invito non vale più: è scaduto oppure è già stato usato. Chiedi all'amministratore di mandartene uno nuovo.");
+    $("nvm").classList.remove("hide");$("nv").classList.remove("hide");
+  }).catch(function(){$("g").style.display=""});
 }
 function pwUguali(a,b){var i=$(b),d=document.createElement("div");d.className="pwm";var dopo=i.closest("label")||(i.nextElementSibling&&i.nextElementSibling.className==="occhio"?i.nextElementSibling:i);dopo.insertAdjacentElement("afterend",d);function c(){var x=$(a).value,y=i.value;d.className="pwm"+(y?(x===y?" ok":" no"):"");d.textContent=y?T(x===y?"Le due password coincidono":"Le due password non coincidono"):""}i.addEventListener("input",c);$(a).addEventListener("input",c)}
 function occhi(){document.querySelectorAll('input[type="password"]').forEach(function(i){if(i.nextElementSibling&&i.nextElementSibling.className==="occhio")return;var b=document.createElement("button");b.type="button";b.className="occhio";b.textContent=T("mostra");b.onclick=function(){var v=i.type==="password";i.type=v?"text":"password";b.textContent=T(v?"nascondi":"mostra")};i.insertAdjacentElement("afterend",b)})}
