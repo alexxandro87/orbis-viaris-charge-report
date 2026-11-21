@@ -531,7 +531,7 @@ async function scarica(env) {
     const per = rfidPercorsi(c);
     if (per) {
       try { tessere = await conTimeout(per.file, c); } catch (_) { /* optional */ }
-      if (tessere) { try { await rfidCache(env, rfidLeggi(tessere)); } catch (_) { /* optional */ } }
+      if (tessere) { try { await rfidCache(env, rfidLeggi(tessere)); await rfidCopia(env, riempiNomi(rfidLeggi(tessere), await nomiDb(env))); } catch (_) { /* optional */ } }
     }
     const esito = await salvaScarico(env, c, storico, tessere);
     try {                                                   // optional: if DNS does not answer the download is still valid
@@ -628,6 +628,24 @@ async function rfidMancanti(env, lista) {
     .map((x) => ({ id: x.id, scad: x.scad || "", nome: rfidNome(nomi.get(x.id) || "").slice(0, RFID_NOME_MAX), stato: "0", mancante: true }));
 }
 
+// copies of the card list from the last 7 days (meta 'rfid_copie', newest first): one before and one after every write from the
+// site, and one at every download if the list has changed. A copy equal to the newest one is not added; the newest one is always
+// kept. Replaces the single copy 'rfid_backup' (which becomes the first copy of the list).
+const COPIE_GIORNI = 7, COPIE_MAX = 60;
+const rfidFirma = (L) => L.map((x) => [x.id, x.nome, x.scad, x.stato].join(";")).sort().join("|");
+async function rfidCopie(env) {
+  const c = await leggiMeta(env, "rfid_copie", null);
+  if (Array.isArray(c)) return c;
+  const v = await leggiMeta(env, "rfid_backup", null);
+  return v && Array.isArray(v.lista) ? [v] : [];
+}
+async function rfidCopia(env, lista) {
+  const c = await rfidCopie(env);
+  if (c.length && rfidFirma(c[0].lista) === rfidFirma(lista)) return;
+  const limite = Date.now() - COPIE_GIORNI * 86400e3;
+  await salvaMeta(env, "rfid_copie", [{ quando: new Date().toISOString(), lista }, ...c].filter((x, i) => i === 0 || Date.parse(x.quando) >= limite).slice(0, COPIE_MAX));
+}
+
 async function rfidDallaColonnina(env) {
   const c = await colonninaConfig(env), per = rfidPercorsi(c);
   if (!per) throw new Error("Per gestire le tessere serve un percorso elenco tessere che contenga level=file (scheda Impostazioni)");
@@ -674,7 +692,7 @@ async function ripristinaNomi(env) {
 
 async function rfidScrivi(env, prima, dopo, copia = true) {
   // safety copy of the list as it was (not when only putting names back), then write and save as the panel does
-  if (copia) await env.DB.prepare("INSERT OR REPLACE INTO meta VALUES ('rfid_backup', ?)").bind(JSON.stringify({ quando: new Date().toISOString(), lista: prima })).run();
+  if (copia) await rfidCopia(env, prima);
   const c = await colonninaConfig(env), per = rfidPercorsi(c);
   if (!per) throw new Error("Per gestire le tessere serve un percorso elenco tessere che contenga level=file (scheda Impostazioni)");
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 20000);
@@ -697,6 +715,7 @@ async function rfidScrivi(env, prima, dopo, copia = true) {
     return !norm(vecchi.get(x.id)).startsWith(norm(x.nome));
   });
   if (da.length) { await env.DB.batch(da.map((x) => st.bind(x.id, x.nome))); await syncNomi(env); }   // removed cards stay in the db for the history
+  if (copia) await rfidCopia(env, riempiNomi(letta, await nomiDb(env)));   // the list as it is after the write
   return { ok, lista: letta };
 }
 
@@ -3248,8 +3267,7 @@ export default {
           if (req.method === "GET" && prima.some((x, i) => x.nome !== letta[i].nome)) ctx.waitUntil(ripristinaNomi(env).catch(() => {}));
         }
         catch (e) { return json({ errore: "Colonnina non raggiungibile: " + msgErrore(e) }, 502); }
-        const bk = await env.DB.prepare("SELECT valore FROM meta WHERE chiave='rfid_backup'").first();
-        const backup = bk ? JSON.parse(bk.valore) : null;
+        const copie = await rfidCopie(env);
         if (req.method === "GET") {
           // for entries without a code suggest the code from the site db, searching by name
           const db = (await env.DB.prepare("SELECT tag, nome FROM tessere").all()).results;
@@ -3258,7 +3276,7 @@ export default {
             const c = db.filter((r) => norm(r.nome).startsWith(norm(x.nome)) && !prima.some((y) => y.id === r.tag));
             return { ...x, suggerito: c.length === 1 ? c[0].tag : "", nome_completo: c.length === 1 ? c[0].nome : "" };
           });
-          return json({ lista: await conBloccate(env, [...lista, ...(await rfidMancanti(env, lista))]), backup: backup ? { quando: backup.quando, n: backup.lista.length } : null });
+          return json({ lista: await conBloccate(env, [...lista, ...(await rfidMancanti(env, lista))]), copie });
         }
         if (req.method !== "POST") return json({ errore: "metodo" }, 405);
         const b = await req.json();
@@ -3311,9 +3329,10 @@ export default {
             const es = dopo.find((x) => x.id === n.id);
             if (!es) dopo.push(n); else { if (norm(es.nome) !== norm(n.nome) || n.nome.length > es.nome.length) es.nome = n.nome; /* on a tie keep the spelling with spaces */ if (n.scad) es.scad = n.scad; es.stato = n.stato; }
           }
-        } else if (b.azione === "ripristina") {
-          if (!backup) return json({ errore: "Nessuna copia precedente" }, 400);
-          dopo = backup.lista;
+        } else if (b.azione === "ripristina") {                // one of the copies of the last 7 days, chosen by its date
+          const c = copie.find((x) => x.quando === b.quando);
+          if (!c) return json({ errore: "Copia non trovata" }, 400);
+          dopo = c.lista.map((x) => ({ ...x }));
         } else return json({ errore: "azione sconosciuta" }, 400);
         try {
           const r = await rfidScrivi(env, prima, dopo);

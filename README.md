@@ -203,7 +203,7 @@ When the charger asks the server to authorise a card, only a card present on the
 
 ## Cards on the charger and card holders
 
-**Users/Cards > Charger RFID cards** (administrator) shows the cards the charger accepts and lets you add, edit (name, expiry, state), permanently deactivate, import (from the file exported here or from the Viaris CSV), export and restore the list saved before the last change. The list is read from the card list path, written back and saved as the Orbis panel does; before each change the current list is stored, and after writing the list is read again to check it (names up to 25 characters).
+**Users/Cards > Charger RFID cards** (administrator) shows the cards the charger accepts and lets you add, edit (name, expiry, state), permanently deactivate, import (from the file exported here or from the Viaris CSV), export, and restore one of the copies of the list from the last 7 days ("List copies": one before and one after every change made from the site, one at every download if the list changed; each copy shows which cards restoring it would put back, remove or change, and asks for confirmation). The list is read from the card list path, written back and saved as the Orbis panel does; after writing the list is read again to check it (names up to 25 characters).
 
 Card holders: every card has a history of who held it and when; reports use the holder at the time of each session. A card deactivated and later reassigned starts a new period; dates can be corrected from the same box.
 

@@ -317,7 +317,8 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
     <h2>Tessere RFID della colonnina</h2>
     <div class="bar"><label>Codice tessera <input id="rId" size="12" autocomplete="off"></label> <label>Nome <input id="rNome" size="28" maxlength="25" autocomplete="off"></label> <label>Scadenza <input id="rScad" type="date"></label> <label id="rDalL">Assegnata dal <input id="rDal" type="date"></label> <label>Stato <select id="rStato"><option value="0">Attiva</option><option value="1">Bloccata</option><option value="2">Scaduta</option><option value="3">Non valida</option></select></label> <label id="rTipoL">Tipo <select id="rTipo"><option value="consumo">A consumo</option><option value="prepagata">Prepagata</option></select></label> <button class="p" id="bRAgg">Aggiungi</button> <button id="bRAnn" class="hide">Annulla</button></div>
     <div class="bar hide" id="rPreBox" style="flex-wrap:wrap"><label>Prezzo €/kWh <input id="rPPr" type="number" min="0.01" step="0.01" placeholder="0,40" style="width:6em"></label> <label>Credito iniziale <input id="rPCr" type="number" min="0" step="0.01" style="width:6em"> €</label> <label>Avviso sotto <input id="rPSo" type="number" min="0" step="1" value="5" style="width:5em"> €</label> <span class="sub">Prepagata: il credito scala con questo prezzo; a zero la tessera viene bloccata. Con credito 0 resta bloccata finché non aggiungi credito dalla scheda Prepagate.</span></div>
-    <div class="bar"><button id="bRDis" disabled>Disattivazione Permanente</button> <button id="bRImp">Importa file</button><input id="rFile" type="file" accept=".csv,.txt" class="hide"> <button id="bREsp">Esporta lista</button> <button id="bRLeggi">Rileggi dalla colonnina</button> <button id="bRRip" class="hide">Ripristina lista precedente</button> <span class="sub err" id="rEsito"></span></div>
+    <div class="bar"><button id="bRDis" disabled>Disattivazione Permanente</button> <button id="bRImp">Importa file</button><input id="rFile" type="file" accept=".csv,.txt" class="hide"> <button id="bREsp">Esporta lista</button> <button id="bRLeggi">Rileggi dalla colonnina</button> <button id="bRRip" class="hide">Copie della lista (7 giorni)</button> <span class="sub err" id="rEsito"></span></div>
+    <div id="rCopie" class="hide"></div>
     <table id="tabR"></table>
     <div class="sub">Clicca su una tessera per selezionarla: Disattivazione Permanente la toglie dalla colonnina (lo storico resta), Modifica cambia nome, stato o data di assegnazione. In grigio le tessere disattivate: le loro ricariche restano attribuite a chi le aveva in quel periodo.</div>
     <div class="sub">Nome al massimo 25 caratteri (oltre, la colonnina lo tronca). Scadenza facoltativa: la tessera vale fino alla fine di quel giorno. Le modifiche vengono scritte subito sulla colonnina. Prima di ogni scrittura il sito tiene una copia della lista precedente. L'import aggiunge le tessere nuove e aggiorna nomi e stati, senza cancellare nulla (va bene sia il file esportato da qui sia il CSV esportato da Viaris).</div>
@@ -913,7 +914,7 @@ function mostraRfid(r){
   RERR=r.errore||"";
   if(r.errore){e.textContent=T(r.errore);RFID=[]}
   if(r.lista)RFID=r.lista.map(function(x,i){x.i=i;return x});
-  if(r.backup!==undefined){$("bRRip").classList.toggle("hide",!r.backup);if(r.backup)$("bRRip").title=T("Copia del ")+new Date(r.backup.quando).toLocaleString(LOC,{dateStyle:"short",timeStyle:"short"})+" ("+r.backup.n+T(" tessere)")}
+  if(r.copie!==undefined){COPIE=r.copie||[];$("bRRip").classList.toggle("hide",!COPIE.length);if(!$("rCopie").classList.contains("hide"))disegnaCopie()}
   disegnaR();
   if(r.avviso)e.textContent=T(r.avviso);
   else if(!r.errore&&RFID.some(function(x){return !x.id}))e.textContent=T("Ci sono tessere senza codice: non funzionano finché non le ripari");
@@ -989,7 +990,34 @@ $("bREsp").onclick=function(){
   var s="1\r\n"+RFID.map(function(x){return x.id+";"+x.scad+";"+x.nome+";"+x.stato+"\r\n"}).join("");
   var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([s],{type:"text/plain"}));a.download="tessere_colonnina_"+new Date().toISOString().slice(0,10)+".txt";a.click();
 };
-$("bRRip").onclick=function(){if(confirm(T("Riportare sulla colonnina la lista com'era prima dell'ultima modifica?")))rfid({azione:"ripristina"},"Lista ripristinata")};
+// copies of the card list (last 7 days): each one with what restoring it would change compared with the list on the charger now,
+// and a confirmation that names the cards put back, removed and changed
+var COPIE=[];
+function difCopia(c){
+  var ora=RFID.filter(function(x){return !x.mancante}),k=function(x){return x.id||("?"+x.nome)},nm=function(x){return x.nome+(x.id?" ("+x.id+")":"")};
+  var rim=c.lista.filter(function(x){return !ora.some(function(y){return k(y)===k(x)})}).map(nm);
+  var tol=ora.filter(function(x){return !c.lista.some(function(y){return k(y)===k(x)})}).map(nm);
+  var cam=c.lista.filter(function(x){return ora.some(function(y){return k(y)===k(x)&&(y.nome!==x.nome||y.stato!==x.stato||(y.scad||"")!==(x.scad||""))})}).map(nm);
+  return {rim:rim,tol:tol,cam:cam,nessuna:!rim.length&&!tol.length&&!cam.length};
+}
+function testoDif(d){
+  var r=[];if(d.rim.length)r.push(T("Rimette: ")+d.rim.join(", "));if(d.tol.length)r.push(T("Toglie: ")+d.tol.join(", "));if(d.cam.length)r.push(T("Cambia nome, stato o scadenza: ")+d.cam.join(", "));
+  return r.length?r.join("<br>"):T("Uguale alla lista attuale");
+}
+function disegnaCopie(){
+  var h='<div class="sub">'+T("Copie della lista tessere degli ultimi 7 giorni: una prima e una dopo ogni modifica dal sito, e una a ogni scarico se la lista è cambiata. Accanto a ogni copia c'è cosa cambierebbe rispetto alla lista che c'è ora sulla colonnina.")+'</div>';
+  COPIE.forEach(function(c,i){var d=difCopia(c);
+    h+='<div class="copia"><b>'+esc(new Date(c.quando).toLocaleString(LOC,{dateStyle:"short",timeStyle:"short"}))+'</b> · '+c.lista.filter(function(x){return x.id}).length+T(" tessere")+'<div class="dif">'+testoDif({rim:d.rim.map(esc),tol:d.tol.map(esc),cam:d.cam.map(esc)})+'</div>'
+      +(d.nessuna?"":'<div class="bar"><button class="cRip" data-i="'+i+'">'+T("Ripristina questa copia")+'</button></div><div class="conf hide" id="cConf'+i+'"></div>')+'</div>'});
+  $("rCopie").innerHTML=h;
+  document.querySelectorAll("#rCopie .cRip").forEach(function(b){b.onclick=function(){var i=+b.dataset.i,c=COPIE[i],d=difCopia(c),x=$("cConf"+i);
+    x.innerHTML='<b>'+T("Confermi il ripristino?")+'</b><br>'+testoDif({rim:d.rim.map(esc),tol:d.tol.map(esc),cam:d.cam.map(esc)})+'<div class="bar"><button class="p cSi">'+T("Ripristina")+'</button> <button class="cNo">'+T("Annulla")+'</button></div>';
+    x.classList.remove("hide");b.classList.add("hide");
+    x.querySelector(".cNo").onclick=function(){x.classList.add("hide");b.classList.remove("hide")};
+    x.querySelector(".cSi").onclick=function(){$("rCopie").classList.add("hide");rfid({azione:"ripristina",quando:c.quando},"Lista ripristinata")};
+  }});
+}
+$("bRRip").onclick=function(){var p=$("rCopie");p.classList.toggle("hide");if(!p.classList.contains("hide"))disegnaCopie()};
 var MONADM=false,MALDIRTY=false,AVDIRTY=false;
 function caricaMal(){return api("/api/malfunzionamenti").then(disegnaMal)}
 function caricaProfilo(salva){

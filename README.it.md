@@ -203,7 +203,7 @@ Quando la colonnina chiede al server di autorizzare una tessera, viene accettata
 
 ## Tessere sulla colonnina e intestatari
 
-**Utenti/Card > Tessere RFID della colonnina** (amministratore) mostra le tessere accettate dalla colonnina e permette di aggiungere, modificare (nome, scadenza, stato), disattivare in modo permanente, importare (dal file esportato da qui o dal CSV di Viaris), esportare e ripristinare la lista salvata prima dell'ultima modifica. La lista è letta dal percorso dell'elenco tessere, riscritta e salvata come fa il pannello Orbis; prima di ogni modifica la lista attuale viene conservata, e dopo la scrittura la lista viene riletta per controllo (nomi fino a 25 caratteri).
+**Utenti/Card > Tessere RFID della colonnina** (amministratore) mostra le tessere accettate dalla colonnina e permette di aggiungere, modificare (nome, scadenza, stato), disattivare in modo permanente, importare (dal file esportato da qui o dal CSV di Viaris), esportare e ripristinare una delle copie della lista degli ultimi 7 giorni («Copie della lista»: una prima e una dopo ogni modifica dal sito, una a ogni scarico se la lista è cambiata; ogni copia mostra quali tessere il ripristino rimette, toglie o cambia, e chiede conferma). La lista è letta dal percorso dell'elenco tessere, riscritta e salvata come fa il pannello Orbis; dopo la scrittura la lista viene riletta per controllo (nomi fino a 25 caratteri).
 
 Intestatari: ogni tessera ha uno storico di chi l'aveva e quando; i report usano l'intestatario al momento di ogni sessione. Una tessera disattivata e poi riassegnata apre un nuovo periodo; le date si correggono dallo stesso riquadro.
 

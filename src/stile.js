@@ -40,6 +40,8 @@ export const STILE = [
   "tr.cl:hover,tr.rs:hover td,tr.ut:hover td{background:var(--soft)}",
   "td button{min-height:32px;padding:4px 10px;font-size:13px;border-radius:10px}",
   // users waiting for activation (counted next to "Utenti"): on top, highlighted row
+  // card list copies (7 days): one box per copy, with the differences from the current list
+  "#rCopie{margin:10px 0}.copia{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0}.copia .dif{font-size:13px;color:var(--mut);margin:4px 0;overflow-wrap:anywhere}.copia .bar{margin-top:6px}.copia .conf{margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--soft);font-size:14px;overflow-wrap:anywhere}",
   "tr.nuovo td{background:rgba(184,120,10,.10)}tr.nuovo td:first-child{box-shadow:inset 4px 0 0 #b8780a}.stNuovo{display:inline-block;background:#b8780a;color:#fff;border-radius:999px;padding:2px 10px;font-weight:600;font-size:13px;white-space:nowrap}",
   // brand mark next to the title: blue square with a bolt
   ".marca{display:flex;align-items:center;gap:12px;min-width:0}",
