@@ -173,6 +173,8 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
     <h2>Riavvio automatico</h2>
     <div class="bar"><label><input type="checkbox" id="raOn"> Riavvia la colonnina dal suo pannello quando resta scollegata dal server</label></div>
     <div class="bar"><label>Dopo <input id="raMin" type="number" min="10" max="240" style="width:5em"> minuti di scollegamento</label> <label>Al massimo <input id="raMax" type="number" min="1" max="6" style="width:4em"> riavvii in 24 ore</label></div>
+    <div class="bar"><label><input type="checkbox" id="raTk"> Controllo automatico dei ticket «La mia tessera non funziona» e «La ricarica non parte»</label></div>
+    <div class="sub">Il sito controlla la tessera indicata: se è disattivata, scaduta o una prepagata senza credito risponde spiegando il motivo e passa il ticket a te, senza riattivarla. Se è attiva ma manca dalla lista la rimette; se è tutto in regola riavvia la colonnina (con le stesse regole e lo stesso limite di riavvii qui sopra) e poi confronta la lista con l'elenco del sito. Il ticket si chiude da solo alla prima ricarica partita con quella tessera.</div>
     <div class="bar"><button class="p" id="bRa">Salva</button> <span class="sub err" id="raEsito"></span></div>
     <div class="sub" id="raUlt"></div>
     <div class="sub">Riavvio semplice, come il pulsante del pannello: non cancella nulla. Parte solo con la presa libera e senza ricariche aperte, al massimo una volta all'ora. Funziona se il pannello risponde anche quando l'OCPP è giù; ogni tentativo lascia una notifica e una riga nel registro OCPP.</div>
@@ -211,9 +213,11 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
     <div class="card hide" id="cSenzaT" style="margin:0 0 10px">La tua registrazione è completa. Ora l’Amministratore deve abbinare la tua tessera al tuo account: quando lo farà, riceverai un’email e qui vedrai le tue ricariche. Non serve registrarti di nuovo. Se non hai ancora la tessera, puoi richiederla qui sotto<span class="fee-par"></span>: ti contatteremo per la consegna e il pagamento.<br><br>L’Amministratore è già stato avvisato. Se passa troppo tempo, apri una richiesta di assistenza qui sotto oppure <a href="#" id="aTk">clicca qui</a>.</div>
     <div class="sub">Da qui puoi inviare una richiesta all'Amministratore. Riceverai l'esito per email.</div>
     <div class="bar"><label>Tipo di richiesta <select id="tkTipo">
-      <option value="tessera">Tessera smarrita o danneggiata</option><option value="nuova">Richiesta nuova tessera</option><option value="dati">Correzione dei dati</option>
+      <option value="funziona">La mia tessera non funziona</option><option value="tessera">Tessera smarrita o danneggiata</option><option value="nuova">Richiesta nuova tessera</option><option value="dati">Correzione dei dati</option>
       <option value="cancellazione">Cancellazione dei dati / dell'utenza</option><option value="colonnina">Problema con la colonnina</option><option value="altro">Altro</option></select></label></div>
-    <div class="bar" id="tkTessBox"><label>Tessera <select id="tkTess"></select></label> <label>Motivo <select id="tkMotivo"><option value="smarrita">Smarrita</option><option value="danneggiata">Danneggiata</option></select></label></div>
+    <div class="bar hide" id="tkProbBox"><label>Che cosa succede? <select id="tkProb"><option value="non_parte">La ricarica non parte</option><option value="altro">Altro problema</option></select></label></div>
+    <div class="bar" id="tkTessBox"><label>Tessera <select id="tkTess"></select></label> <label id="tkMotivoL">Motivo <select id="tkMotivo"><option value="smarrita">Smarrita</option><option value="danneggiata">Danneggiata</option></select></label></div>
+    <div class="sub hide" id="tkFunzInfo">Controlliamo la tua tessera sulla colonnina: se manca dalla lista la rimettiamo e, se serve, riavviamo la colonnina. Ti scriviamo l'esito qui e per email. Il messaggio è facoltativo.</div>
     <div class="sub" id="tkTessInfo">Per sicurezza la tessera viene bloccata subito sulla colonnina. Se la ritrovi, scrivi all'Amministratore: può sbloccarla. Se non la ritrovi o è danneggiata dovrai richiederne una nuova<span class="fee-par"></span>.</div>
     <div class="sub" id="tkNuovaInfo" style="display:none"><span class="fee-info"></span>Ti contatteremo al telefono indicato nel tuo profilo per la consegna e il pagamento. Il messaggio è facoltativo (ad esempio gli orari in cui sei reperibile).</div>
     <div class="bar hide" id="tkPagBox"><label>Come vuoi pagare<span class="fee-par"></span> <select id="tkPagSel"></select></label></div>
@@ -226,7 +230,7 @@ nav{flex-wrap:wrap}button{white-space:nowrap}.top h1{min-width:0;overflow-wrap:a
     <label style="display:block">Messaggio<br><textarea id="tkTesto" rows="4" maxlength="1000" style="width:100%;font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--tx)"></textarea></label>
     <div class="bar"><button class="p" id="bTk">Invia richiesta</button> <span class="sub" id="tkEsito"></span></div>
   </div>
-  <div class="card"><h2 id="tkTit">Le mie richieste</h2><div id="listaT"></div></div>
+  <div class="card"><h2 id="tkTit">Le mie richieste</h2><div class="bar hide" id="tkFil"><button data-f="aperti">Aperti</button> <button data-f="tutti">Tutti</button></div><div id="listaT"></div></div>
 </section>
 
 <section id="t12" class="hide">
@@ -1028,11 +1032,14 @@ function caricaProfilo(salva){
   });
 }
 
-var TIPIT={tessera:"Tessera smarrita o danneggiata",dati:"Correzione dei dati",cancellazione:"Cancellazione dei dati / dell'utenza",colonnina:"Problema con la colonnina",altro:"Altro",nuova:"Richiesta nuova tessera"};
+var TIPIT={funziona:"La mia tessera non funziona",tessera:"Tessera smarrita o danneggiata",dati:"Correzione dei dati",cancellazione:"Cancellazione dei dati / dell'utenza",colonnina:"Problema con la colonnina",altro:"Altro",nuova:"Richiesta nuova tessera"};
 var TESST=[];
 // "clicca qui" for the person waiting for activation: the request form below with "Altro" and the cursor in the message (the types are static, nothing to wait for)
 $("aTk").onclick=function(e){e.preventDefault();$("tkTipo").value="altro";tipoT();$("tkTesto").scrollIntoView({block:"center"});$("tkTesto").focus()};
-function tipoT(){var t=$("tkTipo").value;$("tkTessBox").classList.toggle("hide",t!=="tessera");$("tkTessInfo").style.display=t==="tessera"?"block":"none";$("tkDatiBox").classList.toggle("hide",t!=="dati");$("tkCancInfo").style.display=t==="cancellazione"?"block":"none";$("tkNuovaInfo").style.display=t==="nuova"?"block":"none";$("tkPagBox").classList.toggle("hide",t!=="nuova");$("tkPag").style.display=t==="nuova"?"block":"none";if(t==="nuova")pagTesto()}
+// "La mia tessera non funziona" and "Problema con la colonnina > La ricarica non parte": card choice and automatic check
+function tipoT(){var t=$("tkTipo").value,np=t==="colonnina"&&$("tkProb").value==="non_parte",ct=t==="funziona"||np;
+  $("tkProbBox").classList.toggle("hide",t!=="colonnina");$("tkFunzInfo").classList.toggle("hide",!ct);$("tkMotivoL").classList.toggle("hide",t!=="tessera");
+  $("tkTessBox").classList.toggle("hide",t!=="tessera"&&!ct);$("tkTessInfo").style.display=t==="tessera"?"block":"none";$("tkDatiBox").classList.toggle("hide",t!=="dati");$("tkCancInfo").style.display=t==="cancellazione"?"block":"none";$("tkNuovaInfo").style.display=t==="nuova"?"block":"none";$("tkPagBox").classList.toggle("hide",t!=="nuova");$("tkPag").style.display=t==="nuova"?"block":"none";if(t==="nuova")pagTesto()}
 var PAG={};
 function pagLink(k,v){if(/^https:\/\//.test(v))return v;return k==="paypal"?"https://paypal.me/"+v+"/5EUR":k==="satispay"?"https://tag.satispay.com/"+v:"https://revolut.me/"+v}
 function pagTesto(){api("/api/pagamento").then(function(d){if(!d)return;PAG=d;var cur=$("tkPagSel").value,o=[];
@@ -1046,73 +1053,106 @@ function pagMostra(){var v=$("tkPagSel").value,h="";
   $("tkPag").innerHTML=h;var bc=$("bCopia");if(bc)bc.onclick=function(){var t=causale();try{navigator.clipboard.writeText(t).then(function(){bc.textContent=T("Copiata")})}catch(e){var r=document.createRange();r.selectNode($("causale"));getSelection().removeAllRanges();getSelection().addRange(r)}}}
 $("tkPagSel").onchange=pagMostra;
 $("bPag").onclick=function(){post("/api/pagamento",{paypal:$("pagPp").value,satispay:$("pagSa").value,revolut:$("pagRe").value}).then(function(r){$("pagEs").textContent=r.errore?T(r.errore):T("Salvato")})};
-$("tkTipo").onchange=tipoT;tipoT();
-function statoT(s){return T(s==="aperto"?"aperta":s==="approvato"?"approvata":s==="rifiutato"?"rifiutata":"chiusa")}
+$("tkTipo").onchange=tipoT;$("tkProb").onchange=tipoT;tipoT();
 function extraT(t){
   var x=t.extra;if(!x)return "";
   if(t.tipo==="tessera")return T("Tessera ")+esc(x.tessera)+" ("+T(x.motivo==="danneggiata"?"danneggiata":"smarrita")+") - "+T(x.blocco==="sbloccata"?"tessera sbloccata":x.blocco==="ok"?"bloccata sulla colonnina":x.blocco==="assente"?"tessera non presente sulla colonnina":"blocco in attesa: la colonnina non risponde, riprovo ogni 5 minuti");
+  if(t.tipo==="funziona"||t.tipo==="colonnina")return [x.problema?T("Che cosa succede?")+" "+T({non_parte:"La ricarica non parte",altro:"Altro problema"}[x.problema]||x.problema):"",x.tessera?T("Tessera ")+esc(x.tessera):""].filter(Boolean).join(" · ");
   if(t.tipo==="nuova"&&x.pagamento)return T("Pagamento")+": "+({paypal:"PayPal",satispay:"Satispay",revolut:"Revolut",contanti:T("Contanti alla consegna")}[x.pagamento]||esc(x.pagamento));
   if(t.tipo==="dati"){var p=[];if(x.nome)p.push(T("Nome")+": "+esc(x.nome));if(x.cognome)p.push(T("Cognome")+": "+esc(x.cognome));if(x.tel1)p.push(T("Telefono")+": "+esc(x.tel1));if(x.tel2)p.push(T("Secondo telefono")+": "+esc(x.tel2));return p.join(", ")}
   return "";
 }
+// Ticket tab, as in Monitoring: states aperto -> in gestione -> closed (approved, rejected, solved, closed); the admin sees
+// "Aperti" (open and being handled) or "Tutti"; actions open a field under the ticket with "Annulla"
+var TKF="aperti",TKL={};
+function apertoT(s){return s==="aperto"||s==="gestione"}
+function statoT(s){return T({aperto:"aperta",gestione:"in gestione",approvato:"approvata",rifiutato:"rifiutata",risolto:"risolta"}[s]||"chiusa")}
+function statoCls(s){return s==="aperto"?"tkAp":s==="gestione"?"tkGe":s==="rifiutato"?"tkNo":s==="chiuso"?"tkCh":"tkOk"}
 function badgeTicket(){
-  return api("/api/ticket").then(function(L){
+  return api("/api/ticket?stato=aperti").then(function(L){
     if(!Array.isArray(L))return;
-    var n=L.filter(function(x){return x.stato==="aperto"}).length;
+    var n=L.filter(function(x){return apertoT(x.stato)}).length;
     $("navTN").textContent=n?String(n):"";
   });
 }
+document.querySelectorAll("#tkFil button").forEach(function(b){b.onclick=function(){TKF=b.dataset.f;caricaTicket()}});
 function caricaTicket(){
   var adm=io&&io.ruolo==="admin";
+  $("tkFil").classList.toggle("hide",!adm);
   var pt=adm?api("/api/tessere").then(function(L){TESST=Array.isArray(L)?L:[]}):Promise.resolve();
-  return pt.then(function(){return api("/api/ticket")}).then(function(L){
+  return pt.then(function(){return api("/api/ticket"+(adm?"?stato="+TKF:""))}).then(function(L){
     if(!Array.isArray(L))return;
-    var h="";
+    if(adm){
+      var na=L.filter(function(x){return apertoT(x.stato)}).length;
+      $("tkTit").textContent=T("Ticket")+(TKF==="aperti"?" ("+na+")":"");
+      if(TKF==="aperti")$("navTN").textContent=na?String(na):"";
+      document.querySelectorAll("#tkFil button").forEach(function(b){b.classList.toggle("on",b.dataset.f===TKF)});
+    }
+    var h="";TKL={};
     L.forEach(function(t){
-      var ap=t.stato==="aperto";
-      h+='<div style="padding:8px 0;border-top:1px solid var(--line)"><b>#'+t.id+" "+T(TIPIT[t.tipo]||t.tipo)+'</b> <small>'+esc(oraTxt(Date.parse(t.creato)))+" - "+statoT(t.stato)+"</small>";
-      if(adm)h+="<br><small>"+esc(t.nome_utente?t.nome_utente+" - ":"")+esc(t.utente)+"</small>";
-      var ex=extraT(t);if(ex)h+="<br>"+ex;
-      if(t.testo)h+="<br>"+esc(t.testo).replace(/\n/g,"<br>");
-      (t.integrazioni||[]).forEach(function(g){h+='<div style="margin:4px 0 0 10px;padding-left:8px;border-left:3px solid var(--line)"><small>'+T("Integrazione")+" - "+esc(oraTxt(Date.parse(g.ts)))+"</small><br>"+esc(g.testo).replace(/\n/g,"<br>")+"</div>"});
+      TKL[t.id]=t;
+      var ap=apertoT(t.stato),canc=t.utente==="(utenza cancellata)";
+      h+='<div class="tk"><div class="tkTesta"><span class="tkSt '+statoCls(t.stato)+'">'+statoT(t.stato)+'</span><span class="tkTipo">'+esc(T(TIPIT[t.tipo]||t.tipo))+'</span><b>R-'+t.id+'</b></div>';
+      h+='<div class="tkChi">'+(adm?esc((t.nome_utente?t.nome_utente+" · ":"")+t.utente)+" · ":"")+esc(oraTxt(Date.parse(t.creato)))+'</div>';
+      var ex=extraT(t);if(ex)h+='<div class="tkTxt">'+ex+'</div>';
+      if(t.testo)h+='<div class="tkTxt">'+esc(t.testo).replace(/\n/g,"<br>")+'</div>';
+      if(adm&&t.nota)h+='<div class="tkNota"><b>'+T("Nota interna")+':</b> '+esc(t.nota).replace(/\n/g,"<br>")+'</div>';
+      var fl=(t.integrazioni||[]).map(function(g){return {ts:g.ts,chi:"",testo:g.testo}}).concat((t.risposte||[]).map(function(g){return {ts:g.ts,chi:g.chi||"",testo:g.testo,r:1}})).sort(function(a,b){return Date.parse(a.ts)-Date.parse(b.ts)});
+      fl.forEach(function(g){h+='<div class="tkEv'+(g.r?" r":"")+'"><small>'+(g.r?(g.chi==="Controllo automatico"?T("Controllo automatico"):adm&&g.chi?T("Risposta di ")+esc(g.chi):T("Risposta dell'Amministratore")):T(adm?"Integrazione dell'utente":"La tua integrazione"))+" · "+esc(oraTxt(Date.parse(g.ts)))+"</small><br>"+esc(g.testo).replace(/\n/g,"<br>")+"</div>"});
       if(!adm&&ap)h+='<div class="bar"><input id="ig'+t.id+'" placeholder="'+T("Aggiungi informazioni a questa richiesta")+'" size="34" maxlength="1000"><button class="igb" data-i="'+t.id+'">'+T("Aggiungi")+"</button></div>";
-      if(t.nota)h+='<br><small>'+T("Nota dell'Amministratore: ")+esc(t.nota)+"</small>";
-      if(adm&&!ap&&t.tipo==="tessera"&&t.extra&&(t.extra.blocco==="ok"||t.extra.blocco==="in attesa"))h+='<div class="bar"><button class="tkb" data-i="'+t.id+'" data-e="sblocca">'+T("Sblocca tessera")+"</button></div>";
-      if(adm&&ap){
-        h+='<div class="bar"><input id="tn'+t.id+'" placeholder="'+T("Nota per l'utente (facoltativa)")+'" size="30" maxlength="500">';
-        if(t.tipo==="tessera"||t.tipo==="nuova")h+='<select id="tx'+t.id+'"><option value="">'+T(t.tipo==="nuova"?"scegli la tessera da assegnare":"nessuna nuova tessera (la vecchia viene solo dismessa)")+'</option>'+TESST.map(function(x){return '<option value="'+esc(x.tag)+'">'+esc(x.tag)+" - "+esc(x.nome)+"</option>"}).join("")+"</select>";
-        if(t.tipo==="tessera"||t.tipo==="dati"||t.tipo==="cancellazione"||t.tipo==="nuova")h+='<button class="p tkb" data-i="'+t.id+'" data-e="approva" data-t="'+t.tipo+'" data-u="'+esc(t.utente)+'">'+T(t.tipo==="tessera"?"Sostituisci tessera":t.tipo==="nuova"?"Assegna tessera":"Approva")+"</button>";
-        if(t.tipo!=="tessera")h+='<button class="tkb" data-i="'+t.id+'" data-e="rifiuta">'+T("Rifiuta")+"</button>";
-        if(t.tipo==="tessera"&&t.extra&&t.extra.blocco!=="sbloccata")h+='<button class="tkb" data-i="'+t.id+'" data-e="ritrovata">'+T("Ritrovata: sblocca e chiudi")+"</button>";
-        if(t.tipo==="colonnina"||t.tipo==="altro")h+='<button class="tkb" data-i="'+t.id+'" data-e="chiudi">'+T("Chiudi")+"</button>";
-        h+="</div>";
+      if(adm&&!canc){
+        var bt=function(a,l,p){return '<button class="tka'+(p?" p":"")+'" data-i="'+t.id+'" data-a="'+a+'">'+T(l)+"</button>"};
+        h+='<div class="bar">'+bt("rispondi","Rispondi")+bt("nota","Nota interna");
+        if(t.stato==="aperto")h+=bt("gestione","In gestione");
+        if(ap){
+          if(t.tipo==="tessera"||t.tipo==="dati"||t.tipo==="cancellazione"||t.tipo==="nuova")h+=bt("approva",t.tipo==="tessera"?"Sostituisci tessera":t.tipo==="nuova"?"Assegna tessera":"Approva",1);
+          if(t.tipo!=="tessera")h+=bt("rifiuta","Rifiuta");
+          if(t.tipo==="tessera"&&t.extra&&t.extra.blocco!=="sbloccata")h+=bt("ritrovata","Ritrovata: sblocca e chiudi");
+          if(t.tipo==="colonnina"||t.tipo==="altro"||t.tipo==="funziona")h+=bt("risolta","Risolta",1);
+        }else{
+          if(t.tipo==="tessera"&&t.extra&&(t.extra.blocco==="ok"||t.extra.blocco==="in attesa"))h+=bt("sblocca","Sblocca tessera");
+          h+=bt("riapri","Riapri");
+        }
+        h+='</div><div class="tkForm hide" id="tf'+t.id+'"></div>';
       }
       h+="</div>";
     });
-    $("listaT").innerHTML=h||'<p class="sub">'+T("Nessuna richiesta")+"</p>";
+    $("listaT").innerHTML=h||'<p class="sub">'+T(adm?(TKF==="aperti"?"Nessun ticket aperto.":"Nessun ticket."):"Nessuna richiesta")+"</p>";
     document.querySelectorAll("#listaT .igb").forEach(function(b){b.onclick=function(){
       var i=$("ig"+b.dataset.i);if(!i.value.trim())return;
       post("/api/ticket",{azione:"integra",id:+b.dataset.i,testo:i.value}).then(function(r){
         if(r.errore){alert(T(r.errore));return}
         caricaTicket()})}});
-    document.querySelectorAll("#listaT .tkb").forEach(function(b){b.onclick=function(){
-      var e=b.dataset.e,t=b.dataset.t;
-      if(e==="approva"&&t==="cancellazione"&&!confirm(T("Cancellare definitivamente l'utenza e i dati di ")+b.dataset.u+"?"))return;
-      if(e==="approva"&&t==="tessera"&&!confirm(T("Scollegare la tessera dall'utente?")))return;
-      var n=$("tx"+b.dataset.i);
-      if(e==="approva"&&t==="nuova"&&!(n&&n.value)){alert(T("Scegli la tessera da assegnare"));return}
-      var corpo=e==="sblocca"?{azione:"sblocca",id:+b.dataset.i}:{azione:"gestisci",id:+b.dataset.i,esito:e,nota:$("tn"+b.dataset.i).value,nuova:n?n.value:""};
-      post("/api/ticket",corpo).then(function(r){
-        if(r.errore){alert(T(r.errore));return}
-        if(r.applicato)alert(T(r.applicato));
-        caricaTicket();badgeTicket()})}});
+    var fatto=function(r){if(r.errore){alert(T(r.errore));return}if(r.applicato)alert(T(r.applicato));caricaTicket();badgeTicket()};
+    document.querySelectorAll("#listaT .tka").forEach(function(b){b.onclick=function(){
+      var a=b.dataset.a,id=+b.dataset.i,t=TKL[id],f=$("tf"+id);
+      if(a==="gestione"||a==="riapri"||a==="sblocca"){post("/api/ticket",{azione:a,id:id}).then(fatto);return}
+      var esito=a!=="rispondi"&&a!=="nota",obb=a==="risolta"||a==="rispondi";
+      var ph=a==="rispondi"?"Risposta: arriva per email a chi ha aperto la richiesta":a==="nota"?"Nota interna: la vedono solo gli admin":obb?"Messaggio per chi ha aperto la richiesta (obbligatorio, arriva per email)":"Messaggio per chi ha aperto la richiesta (facoltativo, arriva per email)";
+      var conf={rispondi:"Invia risposta",nota:"Salva nota",approva:t.tipo==="tessera"?"Sostituisci tessera":t.tipo==="nuova"?"Assegna tessera":"Approva",rifiuta:"Rifiuta",ritrovata:"Ritrovata: sblocca e chiudi",risolta:"Risolta"}[a];
+      var x='<textarea id="tt'+id+'" rows="3" maxlength="1000" placeholder="'+T(ph)+'"></textarea>';
+      if(a==="approva"&&(t.tipo==="tessera"||t.tipo==="nuova"))x='<select id="tx'+id+'"><option value="">'+T(t.tipo==="nuova"?"scegli la tessera da assegnare":"nessuna nuova tessera (la vecchia viene solo dismessa)")+'</option>'+TESST.map(function(y){return '<option value="'+esc(y.tag)+'">'+esc(y.tag)+" - "+esc(y.nome)+"</option>"}).join("")+"</select>"+x;
+      f.innerHTML=x+'<div class="bar"><button class="p tkOkB">'+T(conf)+'</button> <button class="tkNoB">'+T("Annulla")+"</button></div>";
+      f.classList.remove("hide");if(a==="nota")$("tt"+id).value=t.nota||"";$("tt"+id).focus();
+      f.querySelector(".tkNoB").onclick=function(){f.classList.add("hide");f.innerHTML=""};
+      f.querySelector(".tkOkB").onclick=function(){
+        var testo=$("tt"+id).value,n=$("tx"+id);
+        if(obb&&!testo.trim()){alert(T(a==="rispondi"?"Scrivi la risposta":"Scrivi il messaggio per chi ha aperto la richiesta"));return}
+        if(a==="approva"&&t.tipo==="cancellazione"&&!confirm(T("Cancellare definitivamente l'utenza e i dati di ")+t.utente+"?"))return;
+        if(a==="approva"&&t.tipo==="tessera"&&!confirm(T("Scollegare la tessera dall'utente?")))return;
+        if(a==="approva"&&t.tipo==="nuova"&&!(n&&n.value)){alert(T("Scegli la tessera da assegnare"));return}
+        var corpo=a==="rispondi"?{azione:"rispondi",id:id,testo:testo}:a==="nota"?{azione:"nota",id:id,nota:testo}:{azione:"gestisci",id:id,esito:a,messaggio:testo,nuova:n?n.value:""};
+        post("/api/ticket",corpo).then(fatto);
+      };
+      void esito;
+    }});
   });
 }
 $("bTk").onclick=function(){
   var e=$("tkEsito");e.textContent="";
   var tipo=$("tkTipo").value;
   $("bTk").disabled=true;
-  post("/api/ticket",{azione:"apri",tipo:tipo,pagamento:$("tkPagSel").value,testo:$("tkTesto").value,tessera:$("tkTess").value,motivo:$("tkMotivo").value,
+  post("/api/ticket",{azione:"apri",tipo:tipo,problema:$("tkProb").value,pagamento:$("tkPagSel").value,testo:$("tkTesto").value,tessera:$("tkTess").value,motivo:$("tkMotivo").value,
     nome:$("tkNome").value,cognome:$("tkCognome").value,tel1:$("tkTel1").value,tel2:$("tkTel2").value}).then(function(r){
     $("bTk").disabled=false;
     if(r.errore){e.textContent=T(r.errore);return}
@@ -1214,10 +1254,10 @@ function leggiMal(){
 ["avOn","avAt","avSo"].forEach(function(id){$(id).addEventListener("input",function(){AVDIRTY=true});$(id).addEventListener("change",function(){AVDIRTY=true})});
 var RADIRTY=false;
 function caricaRa(){return api("/api/malfunzionamenti").then(function(d){if(!d||!d.riavvio)return;var x=d.riavvio;
-  if(!RADIRTY){$("raOn").checked=!!x.on;$("raMin").value=x.min;$("raMax").value=x.max}
+  if(!RADIRTY){$("raOn").checked=!!x.on;$("raMin").value=x.min;$("raMax").value=x.max;$("raTk").checked=!!x.ticket}
   $("raUlt").textContent=x.ultimo?T("Ultimo tentativo: ")+oraTxt(x.ultimo.ts)+" - "+T(x.ultimo.esito)+" ("+x.n24+" "+T("nelle ultime 24 ore")+")":T("Nessun riavvio automatico finora")})}
-["raOn","raMin","raMax"].forEach(function(id){$(id).addEventListener("input",function(){RADIRTY=true});$(id).addEventListener("change",function(){RADIRTY=true})});
-$("bRa").onclick=function(){post("/api/malfunzionamenti",{azione:"riavvio",on:$("raOn").checked,min:$("raMin").value,max:$("raMax").value}).then(function(r){
+["raOn","raMin","raMax","raTk"].forEach(function(id){$(id).addEventListener("input",function(){RADIRTY=true});$(id).addEventListener("change",function(){RADIRTY=true})});
+$("bRa").onclick=function(){post("/api/malfunzionamenti",{azione:"riavvio",on:$("raOn").checked,min:$("raMin").value,max:$("raMax").value,ticket:$("raTk").checked}).then(function(r){
   $("raEsito").textContent=r.errore?T(r.errore):T("Salvato");if(!r.errore){RADIRTY=false;caricaRa()}})};
 $("bAv").onclick=function(){post("/api/malfunzionamenti",{azione:"avvisi",on:$("avOn").checked,attesa:$("avAt").value,sollecito:$("avSo").value}).then(function(r){
   $("avEsito").textContent=r.errore?T(r.errore):T("Salvato");if(!r.errore)AVDIRTY=false})};
@@ -1475,7 +1515,7 @@ api("/api/me").then(function(m){
   if(m.senzaTessera){
     document.querySelectorAll("nav button").forEach(function(b){b.classList.add("hide")});
     $("navP").classList.remove("hide");$("navT").classList.remove("hide");$("bScarica").classList.add("hide");$("bImporta").classList.add("hide");$("stato").classList.add("hide");
-    $("cSenzaT").classList.remove("hide");var po=$("tkTipo").querySelector('option[value="tessera"]');if(po)po.remove();$("tkTipo").value="nuova";tipoT();
+    $("cSenzaT").classList.remove("hide");["tessera","funziona"].forEach(function(v){var po=$("tkTipo").querySelector('option[value="'+v+'"]');if(po)po.remove()});var pp=$("tkProb").querySelector('option[value="non_parte"]');if(pp)pp.remove();$("tkTipo").value="nuova";tipoT();
   }
   $("chi").innerHTML=esc(m.nome)+(m.ruolo==="admin"&&m.nome!=="admin"?' <span class="pill">admin</span>':"");
   if(m.senzaTessera){$("chi").innerHTML=esc(m.nome);$("navT").click();return}

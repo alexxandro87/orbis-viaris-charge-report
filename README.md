@@ -231,14 +231,18 @@ The **Prepaid** tab (admin) manages cards with a credit in euros, deducted at an
 
 ## Support tickets
 
-From the **Support** tab a user opens a request: lost or damaged card, new card request, data correction, deletion of data or account, charger problem, other. Up to 5 open requests, one open card request; details can be added while the request is open. The administrator handles them from the **Tickets** tab (badge with the open count): approve, reject or close, with a note; the user gets the outcome by email.
+From the **Support** tab a user opens a request: my card does not work, lost or damaged card, new card request, data correction, deletion of data or account, charger problem (with "What is happening?": the charge does not start, other problem), other. Up to 5 open requests, one open card request; details can be added until the request is closed. Each request has a coloured state: open, being handled, then closed as approved, rejected or solved.
+
+The administrator handles them from the **Tickets** tab (badge with the requests not yet closed), with the **Open** filter (open and being handled) or **All** (closed ones too): open ones first, then the ones being handled, then by last change. On each ticket: **Reply** (the user gets it by email, the state does not change), **Internal note** (only administrators see it), **Take in charge** (the user is told by email), **Solved** for charger and other problems (a message for the user is required), approve / replace card / assign card / reject / found / unblock, **Reopen**. The field opens under the ticket, with Cancel; the closing message goes into the outcome email and stays in the ticket history.
 
 - **Lost or damaged card**: the card is **blocked on the charger at once** (if the charger does not answer, the block is retried every 5 minutes). The administrator can replace it ("Replace card", with or without a new one) or, if found, "Found: unblock and close". Blocked cards remain on the charger's list as blocked.
 - **New card**: shows the fee and the payment options you configured (PayPal.me with the amount preset, Satispay, Revolut, cash on delivery) and a ready reference; the administrator receives the user's name, phone and chosen payment, and assigns the card from the ticket. The site does not verify the payment.
 - **Data correction**: if approved, the data is updated.
 - **Deletion**: if approved, the account and personal data are deleted; the consumption data stays (the ticket becomes anonymous).
 
-For card, charger and new-card tickets the administrator also gets an email (monitoring recipients); the others only an in-site notification.
+For every new request the administrator gets an email (monitoring recipients).
+
+**Automatic card check** (OCPP tab > Automatic restart, off by default): for "My card does not work" and "Charger problem > The charge does not start" the site checks the chosen card. Expired, deactivated, blocked for a lost report or prepaid with no credit: it replies explaining why and leaves the ticket to the administrator, never reactivating the card. Active but missing from the charger's list: it puts it back (with the socket free). Everything in order: it restarts the charger (OCPP Reset, or from the panel if disconnected; socket free, same limits as the automatic restart) and then compares the charger's list with the site's one, putting back the active cards missing. The ticket closes by itself as solved at the first charge started with that card; otherwise it stays with the administrator (after 3 hours without a possible restart or 24 hours without charges). Every step goes into the internal note.
 
 ## Notices to users
 The site talks to users by email, in the user's language.

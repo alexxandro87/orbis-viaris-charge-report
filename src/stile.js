@@ -42,6 +42,15 @@ export const STILE = [
   // users waiting for activation (counted next to "Utenti"): on top, highlighted row
   // card list copies (7 days): one box per copy, with the differences from the current list
   "#rCopie{margin:10px 0}.copia{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0}.copia .dif{font-size:13px;color:var(--mut);margin:4px 0;overflow-wrap:anywhere}.copia .bar{margin-top:6px}.copia .conf{margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--soft);font-size:14px;overflow-wrap:anywhere}",
+  // Ticket tab, as in Monitoring: Aperti/Tutti filters, coloured state labels, history, field that opens under the ticket
+  "#tkFil{margin:0 0 6px}#tkFil button{background:none;color:var(--acc)}#tkFil button.on{background:var(--acc);color:var(--btx)}" +
+  ".tk{border-top:1px solid var(--line);padding:10px 0}.tkTesta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}" +
+  ".tkSt{border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.tkAp{background:#b8780a;color:#fff}.tkGe{background:var(--soft);color:var(--tx);border:1px solid var(--line)}" +
+  ".tkOk{background:var(--ok);color:var(--btx)}.tkNo{background:var(--err);color:var(--btx)}.tkCh{background:var(--line);color:var(--tx)}" +
+  ".tkTipo{border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:12px;color:var(--mut)}.tkChi{font-size:13px;color:var(--mut);margin:4px 0;overflow-wrap:anywhere}" +
+  ".tkTxt{margin:4px 0;overflow-wrap:anywhere}.tkNota{font-size:13px;background:var(--soft);border-radius:8px;padding:6px 8px;margin:6px 0;overflow-wrap:anywhere}" +
+  ".tkEv{margin:6px 0 0 10px;padding-left:8px;border-left:3px solid var(--line);overflow-wrap:anywhere}.tkEv.r{border-left-color:var(--acc)}" +
+  ".tkForm{margin-top:8px}.tkForm textarea{width:100%;font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--tx)}.tkForm select{margin:0 0 6px;max-width:100%}",
   "tr.nuovo td{background:rgba(184,120,10,.10)}tr.nuovo td:first-child{box-shadow:inset 4px 0 0 #b8780a}.stNuovo{display:inline-block;background:#b8780a;color:#fff;border-radius:999px;padding:2px 10px;font-weight:600;font-size:13px;white-space:nowrap}",
   // brand mark next to the title: blue square with a bolt
   ".marca{display:flex;align-items:center;gap:12px;min-width:0}",

@@ -811,6 +811,8 @@ async function preparaTabelle(env) {
     if (!col.includes(nome)) await env.DB.prepare(`ALTER TABLE utenti ADD COLUMN ${nome} ${tipo}`).run();
   const colT = (await env.DB.prepare("PRAGMA table_info(ticket)").all()).results.map((c) => c.name);
   if (!colT.includes("integrazioni")) await env.DB.prepare("ALTER TABLE ticket ADD COLUMN integrazioni TEXT").run();   // user additions to the ticket (encrypted JSON)
+  if (!colT.includes("risposte")) await env.DB.prepare("ALTER TABLE ticket ADD COLUMN risposte TEXT").run();   // admin replies to the user (encrypted JSON)
+  if (!colT.includes("aggiornato")) await env.DB.prepare("ALTER TABLE ticket ADD COLUMN aggiornato TEXT").run();   // last change (reply, taken in charge, outcome, reopening, addition)
   tabelleOk = true;
 }
 async function chiaveSessioni(env) {
@@ -1102,7 +1104,7 @@ async function leggiAvvisi(env) { return { ...AVVISI_DEF, ...(await leggiMeta(en
 // With an unstable connection the charger's OCPP client sometimes stops retrying until it restarts; without a connection the site
 // cannot send the OCPP Reset, but the charger's web panel often still answers: the simple restart is sent from there
 // (same as the panel button, type "hard"). Never the factory resets (factoryresetsoft / factoryresethard). Orbis panel only.
-const RIAVVIO_DEF = { on: false, min: 15, max: 3 };              // off by default; minutes disconnected; at most this many restarts in 24 hours
+const RIAVVIO_DEF = { on: false, min: 15, max: 3, ticket: false };   // off by default; minutes disconnected; at most this many restarts in 24 hours; automatic ticket check (off)
 async function leggiRiavvio(env) { return { ...RIAVVIO_DEF, ...(await leggiMeta(env, "riavvio_auto_cfg", {})) }; }
 async function riavvioAuto(env, live, ultimoIn, ora) {
   const cfg = await leggiRiavvio(env), st = await leggiMeta(env, "riavvio_auto_stato", { tentativi: [] });
@@ -1225,6 +1227,7 @@ async function verificaMalfunzionamenti(env, ora = Date.now()) {
     try { await controlloPrepagate(env, ora); } catch (_) { /* optional */ }
     try { await avvisiUtenti(env, live, ora); } catch (_) { /* optional */ }   // after the prepaid check: the summary carries the updated remaining credit
   }
+  try { await ticketAutoTutti(env, live); } catch (_) { /* retry at the next round */ }   // tickets "my card does not work" / "the charge does not start"
   let eventiDO = [];
   if (A) { try { eventiDO = await (await DO.fetch("https://do/malf-eventi", { method: "POST" })).json(); } catch (_) { /* no events */ } }
   const on = (id) => cfg.regole[id].on, v = (id) => cfg.regole[id].min;
@@ -1814,23 +1817,34 @@ async function controlloPrepagate(env, ora, opz = {}) {
 }
 
 // ------------------------------------------------ tickets: user requests to the admin (card, data, deletion, charger, other)
-const TIPI_TICKET = { tessera: "Tessera smarrita o danneggiata", dati: "Correzione dei dati", cancellazione: "Cancellazione dei dati / dell'utenza", colonnina: "Problema con la colonnina", altro: "Altro", nuova: "Richiesta nuova tessera" };
-const TICKET_GRAVI = ["tessera", "colonnina", "nuova"];      // for these the admin also gets an email; the others only the in-site notification
+// States, as in the Ticket section of Monitoring: aperto -> gestione -> closed (approvato, rifiutato, risolto, chiuso). "Open" = not closed.
+const TIPI_TICKET = { funziona: "La mia tessera non funziona", tessera: "Tessera smarrita o danneggiata", dati: "Correzione dei dati", cancellazione: "Cancellazione dei dati / dell'utenza", colonnina: "Problema con la colonnina", altro: "Altro", nuova: "Richiesta nuova tessera" };
+const PROBLEMI_COLONNINA = { non_parte: "La ricarica non parte", altro: "Altro problema" };   // "What is happening?" for charger problems
+const TICKET_APERTI = ["aperto", "gestione"];
 async function ticketLeggi(env, r) {
   const ex = await decifra(env, r.extra, r.utente + "|ticket_extra");
   let extra = null; try { extra = ex ? JSON.parse(ex) : null; } catch (_) { /* empty */ }
   let integr = []; try { const x = await decifra(env, r.integrazioni, r.utente + "|ticket_integr"); integr = x ? JSON.parse(x) : []; } catch (_) { /* empty */ }
-  return { id: r.id, utente: r.utente, tipo: r.tipo, stato: r.stato, creato: r.creato, gestito: r.gestito, extra, integrazioni: integr,
+  let risp = []; try { const x = await decifra(env, r.risposte, r.utente + "|ticket_risposte"); risp = x ? JSON.parse(x) : []; } catch (_) { /* empty */ }
+  return { id: r.id, utente: r.utente, tipo: r.tipo, stato: r.stato, creato: r.creato, gestito: r.gestito, aggiornato: r.aggiornato || r.gestito || r.creato, extra, integrazioni: integr, risposte: risp,
     testo: await decifra(env, r.testo, r.utente + "|ticket_testo"), nota: await decifra(env, r.nota, r.utente + "|ticket_nota") };
 }
-async function ticket(req, env, me, url) {
+// email to the person who opened a ticket, in their languages: righe(l) returns the lines in language l
+async function avvisaUtenteTicket(env, t, titKey, vars, righe) {
+  if (!EMAIL_OK.test(t.utente)) return;
+  const p = parti(await linguaDi(env, t.utente), (l) => ({ tit: tm(l, titKey, vars), righe: righe(l) }));
+  await inviaMail(env, t.utente, oggetto(p), mailRighe(p));
+}
+async function ticket(req, env, me, url, ctx) {
   await preparaTabelle(env);
   if (req.method === "GET") {
+    // admin: ?stato=aperti (open and being handled) or all; open first, then being handled, then by last change
+    const soloAperti = url.searchParams.get("stato") === "aperti";
     const righe = me.ruolo === "admin"
-      ? (await env.DB.prepare("SELECT * FROM ticket ORDER BY (stato='aperto') DESC, id DESC LIMIT 200").all()).results
+      ? (await env.DB.prepare(`SELECT * FROM ticket ${soloAperti ? "WHERE stato IN ('aperto','gestione')" : ""} ORDER BY (stato='aperto') DESC, (stato='gestione') DESC, COALESCE(aggiornato, gestito, creato) DESC, id DESC LIMIT 200`).all()).results
       : (await env.DB.prepare("SELECT * FROM ticket WHERE utente=? ORDER BY id DESC LIMIT 50").bind(me.nome).all()).results;
     const L = [];
-    for (const r of righe) L.push(await ticketLeggi(env, r));
+    for (const r of righe) { const t = await ticketLeggi(env, r); if (me.ruolo !== "admin") delete t.nota; L.push(t); }   // the internal note is for the admin only
     if (me.ruolo === "admin") {                      // names, to recognise who writes
       const ana = {};
       for (const t of L) if (!ana[t.utente]) {
@@ -1848,7 +1862,7 @@ async function ticket(req, env, me, url) {
     const tipo = String(b.tipo || "");
     if (!TIPI_TICKET[tipo]) return json({ errore: "Tipo di richiesta non valido" }, 400);
     const testo = String(b.testo || "").trim().slice(0, 1000);
-    const aperti = (await env.DB.prepare("SELECT COUNT(*) n FROM ticket WHERE utente=? AND stato='aperto'").bind(me.nome).first()).n;
+    const aperti = (await env.DB.prepare("SELECT COUNT(*) n FROM ticket WHERE utente=? AND stato IN ('aperto','gestione')").bind(me.nome).first()).n;
     if (aperti >= 5) return json({ errore: "Hai già 5 richieste aperte: attendi che vengano gestite" }, 429);
     let extra = null;
     if (tipo === "tessera") {
@@ -1856,7 +1870,13 @@ async function ticket(req, env, me, url) {
       if (!(me.tessere || []).includes(tag)) return json({ errore: "Scegli una delle tue tessere" }, 400);
       extra = { tessera: tag, motivo: b.motivo === "danneggiata" ? "danneggiata" : "smarrita" };
       extra.blocco = await bloccaTessera(env, tag, true);      // for safety the card is blocked at once; the admin can unblock it
-
+    } else if (tipo === "funziona" || (tipo === "colonnina" && b.problema === "non_parte")) {   // automatic check of the card (when switched on)
+      const tag = String(b.tessera || "").toUpperCase();
+      if (!(me.tessere || []).includes(tag)) return json({ errore: "Scegli una delle tue tessere" }, 400);
+      extra = { tessera: tag, ...(tipo === "colonnina" ? { problema: "non_parte" } : {}) };
+    } else if (tipo === "colonnina") {
+      if (!testo) return json({ errore: "Scrivi il messaggio" }, 400);
+      extra = { problema: "altro" };
     } else if (tipo === "dati") {
       const nuovo = {}, nome = nomePulito(b.nome), cognome = nomePulito(b.cognome);
       const t1 = String(b.tel1 || "").replace(/\s/g, ""), t2 = String(b.tel2 || "").replace(/\s/g, "");
@@ -1867,18 +1887,17 @@ async function ticket(req, env, me, url) {
       if (!Object.keys(nuovo).length && !testo) return json({ errore: "Indica cosa vuoi correggere" }, 400);
       extra = nuovo;
     } else if (tipo === "nuova") {
-      const gia = (await env.DB.prepare("SELECT COUNT(*) n FROM ticket WHERE utente=? AND tipo='nuova' AND stato='aperto'").bind(me.nome).first()).n;
+      const gia = (await env.DB.prepare("SELECT COUNT(*) n FROM ticket WHERE utente=? AND tipo='nuova' AND stato IN ('aperto','gestione')").bind(me.nome).first()).n;
       if (gia) return json({ errore: "Hai già una richiesta di nuova tessera aperta: attendi che venga gestita" }, 400);
       const pg = await leggiMeta(env, "pagamento_tessera", {});
       const met = String(b.pagamento || "contanti");
       if (met !== "contanti" && !(["paypal", "satispay", "revolut"].includes(met) && pg[met])) return json({ errore: "Metodo di pagamento non disponibile" }, 400);
       extra = { pagamento: met };
     } else if (!testo) return json({ errore: "Scrivi il messaggio" }, 400);
-    const r = await env.DB.prepare("INSERT INTO ticket (utente, tipo, testo, extra, stato, creato) VALUES (?,?,?,?,?,?)")
-      .bind(me.nome, tipo, await cifra(env, testo || null, me.nome + "|ticket_testo"), await cifra(env, extra ? JSON.stringify(extra) : null, me.nome + "|ticket_extra"), "aperto", new Date().toISOString()).run();
+    const adesso = new Date().toISOString();
+    const r = await env.DB.prepare("INSERT INTO ticket (utente, tipo, testo, extra, stato, creato, aggiornato) VALUES (?,?,?,?,?,?,?)")
+      .bind(me.nome, tipo, await cifra(env, testo || null, me.nome + "|ticket_testo"), await cifra(env, extra ? JSON.stringify(extra) : null, me.nome + "|ticket_extra"), "aperto", adesso, adesso).run();
     const id = r.meta.last_row_id;
-    const grave = TICKET_GRAVI.includes(tipo);
-    const dett = `${me.nome}: ${TIPI_TICKET[tipo]}` + (extra && extra.tessera ? ` (${extra.tessera}, ${extra.motivo}, ${extra.blocco === "ok" ? "bloccata" : "blocco in attesa"})` : "");
     let righeNuova = [];
     if (tipo === "nuova") {      // the admin must be able to contact the user for delivery and payment
       const cfgReq = await leggiConfig(env);
@@ -1887,26 +1906,29 @@ async function ticket(req, env, me, url) {
       const t2 = await g("tel2");
       righeNuova = [`Nome: ${(await g("nome_proprio"))} ${(await g("cognome"))}`.trim(), `Telefono: ${await g("tel1")}${t2 ? " / " + t2 : ""}`, `Pagamento scelto dall'utente: ${{ paypal: "PayPal", satispay: "Satispay", revolut: "Revolut", contanti: "contanti alla consegna" }[(extra && extra.pagamento) || "contanti"]}`, "Richiesta di una nuova tessera" + (costoTessera(cfgReq) ? " (" + costoTessera(cfgReq) + ")" : "") + ": contattare l'utente per consegna e pagamento."];
     }
-    let inviata = false;
-    if (grave) {
-      const m = await leggiMalf(env);
-      if (m.a.length) inviata = (await inviaMail(env, m.a, `Nuova richiesta #${id}: ${TIPI_TICKET[tipo]} - ${TITOLO}`,
-        mailMalf(`Nuova richiesta #${id}: ${TIPI_TICKET[tipo]}`, [`Utente: ${me.nome}`, ...righeNuova, ...(extra && extra.tessera ? [`Tessera ${extra.motivo}: ${extra.tessera}`, extra.blocco === "ok" ? "La tessera è stata bloccata sulla colonnina." : "Blocco della tessera in attesa: la colonnina non ha risposto, riprovo ogni 5 minuti."] : []), ...(testo ? [`Messaggio: ${testo}`] : []),
-          "Gestiscila dalla scheda Ticket del sito."]), m.cc)) === "inviata";
+    const m = await leggiMalf(env);                           // the admin gets the email for every new request (as in Monitoring)
+    if (m.a.length) await inviaMail(env, m.a, `Nuova richiesta #${id}: ${TIPI_TICKET[tipo]} - ${TITOLO}`,
+      mailMalf(`Nuova richiesta #${id}: ${TIPI_TICKET[tipo]}`, [`Utente: ${me.nome}`, ...righeNuova,
+        ...(tipo === "tessera" ? [`Tessera ${extra.motivo}: ${extra.tessera}`, extra.blocco === "ok" ? "La tessera è stata bloccata sulla colonnina." : "Blocco della tessera in attesa: la colonnina non ha risposto, riprovo ogni 5 minuti."]
+          : extra && extra.tessera ? [`Tessera: ${extra.tessera}`, (await leggiRiavvio(env)).ticket ? "Il controllo automatico della tessera è partito: l'esito arriva nel ticket." : "Controllo automatico spento: la richiesta va gestita a mano."]
+          : extra && extra.problema ? [`Che cosa succede: ${PROBLEMI_COLONNINA[extra.problema] || extra.problema}`] : []),
+        ...(testo ? [`Messaggio: ${testo}`] : []), "Gestiscila dalla scheda Ticket del sito."]), m.cc);
+    if (extra && extra.tessera && (tipo === "funziona" || tipo === "colonnina")) {   // automatic check now, then at every round of the 5-minute check
+      const p = ticketAuto(env, id).catch(() => {});
+      if (ctx) ctx.waitUntil(p); else await p;
     }
-    void inviata; void dett;                                 // no notification in Monitoring: the Support tab already shows the open requests
     return json({ ok: true, id });
   }
-  if (b.azione === "integra") {                      // the user adds information to one of their open tickets (instead of opening more)
+  if (b.azione === "integra") {                      // the user adds information to one of their tickets not yet closed
     const r = await env.DB.prepare("SELECT * FROM ticket WHERE id=? AND utente=?").bind(+b.id || 0, me.nome).first();
     if (!r) return json({ errore: "Ticket non trovato" }, 404);
-    if (r.stato !== "aperto") return json({ errore: "Ticket già gestito: non si può più integrare" }, 400);
+    if (!TICKET_APERTI.includes(r.stato)) return json({ errore: "La richiesta è chiusa: aprine una nuova" }, 400);
     const testo = String(b.testo || "").trim().slice(0, 1000);
     if (!testo) return json({ errore: "Scrivi il messaggio" }, 400);
     const t = await ticketLeggi(env, r);
     if (t.integrazioni.length >= 10) return json({ errore: "Hai raggiunto il numero massimo di integrazioni" }, 400);
     t.integrazioni.push({ ts: new Date().toISOString(), testo });
-    await env.DB.prepare("UPDATE ticket SET integrazioni=? WHERE id=?").bind(await cifra(env, JSON.stringify(t.integrazioni), me.nome + "|ticket_integr"), r.id).run();
+    await env.DB.prepare("UPDATE ticket SET integrazioni=?, aggiornato=? WHERE id=?").bind(await cifra(env, JSON.stringify(t.integrazioni), me.nome + "|ticket_integr"), new Date().toISOString(), r.id).run();
     await notifica(env, `Ticket #${r.id} integrato`, `${me.nome}: ${TIPI_TICKET[r.tipo]}`);
     return json({ ok: true });
   }
@@ -1926,15 +1948,48 @@ async function ticket(req, env, me, url) {
     }
     return json({ ok: true, applicato: sb === "in attesa" ? "Sblocco in attesa: la colonnina non risponde, riprovo ogni 5 minuti." : "Tessera sbloccata." });
   }
+  if (b.azione === "rispondi" || b.azione === "nota" || b.azione === "riapri" || b.azione === "gestione") {
+    const r = await env.DB.prepare("SELECT * FROM ticket WHERE id=?").bind(+b.id || 0).first();
+    if (!r) return json({ errore: "Ticket non trovato" }, 404);
+    if (r.utente === "(utenza cancellata)") return json({ errore: "Utenza cancellata: il ticket non si può più gestire" }, 400);
+    const t = await ticketLeggi(env, r), vars = { id: r.id };
+    const tipoL = (l) => tm(l, TIPI_TICKET[t.tipo] || t.tipo);
+    if (b.azione === "rispondi") {                   // reply to the user: stays in the ticket and goes out by email; the state does not change
+      const testo = String(b.testo || "").trim().slice(0, 1000);
+      if (!testo) return json({ errore: "Scrivi la risposta" }, 400);
+      if (t.risposte.length >= 20) return json({ errore: "Troppe risposte su questo ticket" }, 400);
+      t.risposte.push({ ts: new Date().toISOString(), chi: String(b.chi || me.nome).slice(0, 80), testo });
+      await env.DB.prepare("UPDATE ticket SET risposte=?, aggiornato=? WHERE id=?").bind(await cifra(env, JSON.stringify(t.risposte), t.utente + "|ticket_risposte"), new Date().toISOString(), r.id).run();
+      await avvisaUtenteTicket(env, t, "Risposta alla richiesta n. {id}", vars, (l) => [tm(l, "Risposta dell'Amministratore alla tua richiesta n. {id} ({tipo}):", { id: r.id, tipo: tipoL(l) }), testo, tm(l, "Puoi rispondere dalla sezione Assistenza del sito.")]);
+      return json({ ok: true });
+    }
+    if (b.azione === "nota") {                       // internal note: only the admin sees it
+      const nota = String(b.nota ?? b.testo ?? "").trim().slice(0, 2000);
+      await env.DB.prepare("UPDATE ticket SET nota=? WHERE id=?").bind(await cifra(env, nota || null, t.utente + "|ticket_nota"), r.id).run();
+      return json({ ok: true });
+    }
+    if (b.azione === "gestione") {                   // taken in charge: the user is told by email (as in Monitoring)
+      if (r.stato !== "aperto") return json({ errore: r.stato === "gestione" ? "Richiesta già in gestione" : "La richiesta è chiusa: riaprila prima" }, 400);
+      await env.DB.prepare("UPDATE ticket SET stato='gestione', aggiornato=? WHERE id=?").bind(new Date().toISOString(), r.id).run();
+      await avvisaUtenteTicket(env, t, "Richiesta n. {id} in gestione", vars, (l) => [tm(l, "La tua richiesta n. {id} ({tipo}) è stata presa in carico: ti scriveremo quando sarà risolta.", { id: r.id, tipo: tipoL(l) })]);
+      return json({ ok: true });
+    }
+    if (TICKET_APERTI.includes(r.stato)) return json({ errore: "Ticket già aperto" }, 400);
+    await env.DB.prepare("UPDATE ticket SET stato='aperto', gestito=NULL, aggiornato=? WHERE id=?").bind(new Date().toISOString(), r.id).run();
+    await avvisaUtenteTicket(env, t, "Richiesta n. {id} riaperta", vars, (l) => [tm(l, "La tua richiesta n. {id} ({tipo}) è stata riaperta dall'Amministratore: puoi aggiungere informazioni dalla sezione Assistenza.", { id: r.id, tipo: tipoL(l) })]);
+    return json({ ok: true });
+  }
   if (b.azione === "gestisci") {
     const r = await env.DB.prepare("SELECT * FROM ticket WHERE id=?").bind(+b.id || 0).first();
     if (!r) return json({ errore: "Ticket non trovato" }, 404);
-    if (r.stato !== "aperto") return json({ errore: "Ticket già gestito" }, 400);
+    if (!TICKET_APERTI.includes(r.stato)) return json({ errore: "Ticket già gestito" }, 400);
     const t = await ticketLeggi(env, r);
-    const esito = { approva: "approvato", rifiuta: "rifiutato", chiudi: "chiuso", ritrovata: "chiuso" }[b.esito];
+    const esito = { approva: "approvato", rifiuta: "rifiutato", chiudi: "chiuso", ritrovata: "chiuso", risolta: "risolto" }[b.esito];
     if (!esito) return json({ errore: "Esito non valido" }, 400);
     if (esito === "approvato" && !["tessera", "dati", "cancellazione", "nuova"].includes(t.tipo)) return json({ errore: "Questo tipo di richiesta si chiude, non si approva" }, 400);
-    const nota = String(b.nota || "").trim().slice(0, 500);
+    // message to the user: goes into the outcome email and stays in the ticket history (the internal note is not touched)
+    const nota = String(b.messaggio ?? b.nota ?? "").trim().slice(0, 1000);
+    if (esito === "risolto" && !nota) return json({ errore: "Scrivi il messaggio per chi ha aperto la richiesta" }, 400);
     let applicato = "";
     const det = [];                                   // outcome details for the email to the user: functions of the language
     const u = await env.DB.prepare("SELECT nome, ruolo, tessera, tessere_altre, lingua FROM utenti WHERE nome=?").bind(t.utente).first();
@@ -1993,25 +2048,193 @@ async function ticket(req, env, me, url) {
       const k = b.esito === "ritrovata" ? "La tessera {tag} è stata riattivata a seguito della tua comunicazione di ritrovamento." : "La tessera {tag} è stata riattivata: la richiesta di blocco non è stata accolta.";
       det.push((l) => tm(l, k, { tag: tg }) + (att ? " " + tm(l, "La riattivazione sulla colonnina sarà completata entro pochi minuti.") : ""));
     }
-    const intest = { approvato: "approvata", rifiutato: "rifiutata", chiuso: "chiusa" }[esito];
+    const intest = { approvato: "approvata", rifiutato: "rifiutata", chiuso: "chiusa", risolto: "risolta" }[esito];
     if (EMAIL_OK.test(t.utente)) {      // the user gets the outcome (before the account is possibly deleted)
       const p = parti(u && u.lingua, (l) => ({ tit: tm(l, "Richiesta n. {id} " + intest, { id: r.id }), righe: [
         tm(l, "La tua richiesta n. {id} ({tipo}) è stata " + intest + ".", { id: r.id, tipo: tm(l, TIPI_TICKET[t.tipo] || t.tipo) }),
         ...(t.tipo === "cancellazione" && esito === "approvato" ? [tm(l, "L'utenza e i dati personali associati sono stati cancellati.")] : []),
-        ...det.map((f) => f(l)), ...(nota ? [tm(l, "Nota dell'Amministratore: {nota}", { nota })] : [])] }));
+        ...det.map((f) => f(l)), ...(nota ? [tm(l, "Messaggio dell'Amministratore: {nota}", { nota })] : [])] }));
       await inviaMail(env, t.utente, oggetto(p), mailHtml(p.map((x) => x.l), (l) => testata(l) + `<p>${p.find((x) => x.l === l).righe.map(esc).join("<br>")}</p>`));
     }
     if (esito === "approvato" && t.tipo === "cancellazione") {
       await env.DB.prepare("DELETE FROM utenti WHERE nome=?").bind(t.utente).run();
       await env.DB.prepare("DELETE FROM ticket WHERE utente=? AND id<>?").bind(t.utente, r.id).run();
-      await env.DB.prepare("UPDATE ticket SET utente='(utenza cancellata)', testo=NULL, extra=NULL, nota=NULL, integrazioni=NULL, stato=?, gestito=? WHERE id=?").bind(esito, new Date().toISOString(), r.id).run();
+      await env.DB.prepare("UPDATE ticket SET utente='(utenza cancellata)', testo=NULL, extra=NULL, nota=NULL, integrazioni=NULL, risposte=NULL, stato=?, gestito=? WHERE id=?").bind(esito, new Date().toISOString(), r.id).run();
       return json({ ok: true, applicato: "Utenza e dati cancellati." });
     }
-    await env.DB.prepare("UPDATE ticket SET stato=?, gestito=?, nota=?, extra=COALESCE(?, extra) WHERE id=?")
-      .bind(esito, new Date().toISOString(), await cifra(env, nota || null, t.utente + "|ticket_nota"), extraNuovo, r.id).run();
+    const adesso = new Date().toISOString();
+    let rispNuove = null;                                      // the closing message stays in the history, like a reply
+    if (nota) { t.risposte.push({ ts: adesso, chi: String(b.chi || me.nome).slice(0, 80), testo: nota, esito }); rispNuove = await cifra(env, JSON.stringify(t.risposte), t.utente + "|ticket_risposte"); }
+    await env.DB.prepare("UPDATE ticket SET stato=?, gestito=?, aggiornato=?, risposte=COALESCE(?, risposte), extra=COALESCE(?, extra) WHERE id=?")
+      .bind(esito, adesso, adesso, rispNuove, extraNuovo, r.id).run();
     return json({ ok: true, applicato });
   }
   return json({ errore: "azione non valida" }, 400);
+}
+
+// ---------------------------------------------------- automatic check of the tickets "My card does not work" / "The charge does not start"
+// Switched on from Settings (Automatic restart box, off by default). Phases, saved in the ticket (extra.auto):
+//  nuovo        -> checks the card in the site's lists: expired, deactivated, blocked for a lost report or prepaid with no credit = to the
+//                  Administrator with an answer that explains why, never reactivated; active but missing on the charger -> puts it back (only
+//                  with the socket free) -> verifica; everything in order -> riavvio
+//  riavvio      -> restart only with the socket free, at most one an hour and the daily restarts of the automatic restart; after 3 hours to the Administrator
+//  dopo_riavvio -> once the charger has restarted (or after 15 minutes) compares its list with the site's one and puts back the active cards missing -> verifica
+//  verifica     -> the first charge started with that card closes the ticket as solved; after 24 hours without charges it stays with the Administrator
+// Every step goes into the internal note; the user gets replies in the ticket history and by email.
+const occupataLive = (live) => !!(live && (live.transazione_aperta || Object.values(live.prese || {}).some((p) => /Charging|Suspended|Preparing|Finishing/.test(p.status))));
+async function presaLibera(env, live) {
+  if (occupataLive(live)) return false;
+  try {
+    const c = await colonninaConfig(env);
+    if (!c.status_path) return !!(live && live.connessa);
+    const ev = JSON.parse(await conTimeout(urlCompleto(c, c.status_path), c, 15000));
+    return !(ev[0] && ev[0].stat && ev[0].stat.state !== 1);
+  } catch (_) { return !!(live && live.connessa); }               // silent panel: the OCPP state counts
+}
+// puts back on the charger the given cards (active ones only, with the site's name); returns the cards put back
+async function rimettiTessere(env, tags) {
+  const nomi = await nomiDb(env), sito = (await leggiMeta(env, "rfid_stato", [])) || [];
+  const prima = riempiNomi(await rfidDallaColonnina(env), nomi), dopo = prima.map((x) => ({ ...x })), fatte = [];
+  for (const tag of tags) {
+    const s = sito.find((x) => x.id === tag);
+    if (!dopo.some((x) => x.id === tag)) { dopo.push({ id: tag, scad: s ? s.scad || "" : "", nome: rfidNome(nomi.get(tag) || tag).slice(0, RFID_NOME_MAX), stato: "0" }); fatte.push(tag); }   // only missing ones: the state of those present is never changed
+  }
+  if (fatte.length) await rfidScrivi(env, prima, dopo);
+  return fatte;
+}
+async function riavviaPerTicket(env, live, id) {
+  const cfg = await leggiRiavvio(env), st = await leggiMeta(env, "riavvio_auto_stato", { tentativi: [] }), ora = Date.now();
+  st.tentativi = (st.tentativi || []).filter((t) => t > ora - 86400e3);
+  if (st.tentativi.length && ora - st.tentativi[st.tentativi.length - 1] < 3600e3) return "attesa: un riavvio nell'ultima ora";
+  if (st.tentativi.length >= cfg.max) return "attesa: raggiunti " + cfg.max + " riavvii in 24 ore";
+  if (!(await presaLibera(env, live))) return "attesa: presa occupata";
+  st.tentativi.push(ora);
+  let esito;
+  try {
+    if (live && live.connessa) {                                  // connected: OCPP Reset (soft)
+      const r = await (await env.COLONNINA.get(env.COLONNINA.idFromName("colonnina")).fetch("https://do/comando", { method: "POST", body: JSON.stringify({ azione: "Reset", payload: { type: "Soft" } }) })).json();
+      esito = r && !r.errore ? "riavvio OCPP inviato" : "riavvio OCPP non riuscito (" + ((r && r.errore) || "nessuna risposta") + ")";
+    } else {                                                      // disconnected: from the panel, like the automatic restart
+      const c = await colonninaConfig(env), ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 15000);
+      try { const r = await fetch(urlCompleto(c, "/reset/sys"), { method: "POST", headers: { ...intestazioni(c), "content-type": "application/json" }, body: JSON.stringify({ timeout: 1000, type: "hard" }), signal: ctl.signal }); esito = r.ok ? "riavvio inviato dal pannello" : "il pannello ha risposto HTTP " + r.status; }
+      finally { clearTimeout(t); }
+    }
+  } catch (e) { esito = "riavvio non riuscito (" + msgErrore(e) + ")"; }
+  st.ultimo = { ts: ora, esito: "ticket R-" + id + ": " + esito };
+  await salvaMeta(env, "riavvio_auto_stato", st);
+  await notifica(env, "Riavvio della colonnina per un ticket", "Ticket R-" + id + ": " + esito, ora);
+  try { await env.COLONNINA.get(env.COLONNINA.idFromName("colonnina")).fetch("https://do/log", { method: "POST", body: JSON.stringify({ testo: "Riavvio per il ticket R-" + id + ": " + esito }) }); } catch (_) { /* optional */ }
+  return esito;
+}
+async function ticketAutoTutti(env, live) {
+  if (!(await leggiRiavvio(env)).ticket) return;
+  const r = (await env.DB.prepare("SELECT id FROM ticket WHERE stato IN ('aperto','gestione') AND tipo IN ('funziona','colonnina') ORDER BY id LIMIT 20").all()).results;
+  for (const x of r) { try { await ticketAuto(env, x.id, live); } catch (_) { /* retry at the next round */ } }
+}
+async function ticketAuto(env, id, live) {
+  if (!(await leggiRiavvio(env)).ticket) return;
+  const r = await env.DB.prepare("SELECT * FROM ticket WHERE id=?").bind(id).first();
+  if (!r || !TICKET_APERTI.includes(r.stato)) return;
+  const t = await ticketLeggi(env, r), x = t.extra || {}, tag = x.tessera;
+  if (!tag) return;
+  const a = x.auto || { fase: "nuovo", da: Date.now(), passi: [] };
+  if (a.fase === "fatto" || a.fase === "admin") return;
+  const ora = Date.now(), prima = JSON.stringify(a), l0 = lingueMessaggio(await linguaDi(env, t.utente))[0];
+  if (!live) live = await env.COLONNINA.get(env.COLONNINA.idFromName("colonnina")).fetch("https://do/stato?leggero=1").then((q) => q.json()).catch(() => null);
+  let stato = r.stato === "aperto" ? "gestione" : r.stato, risposte = null;
+  const passo = (s) => { if (a.passi[a.passi.length - 1] !== s) a.passi.push(s); a.passi = a.passi.slice(-20); };
+  // reply in the ticket (in the person's first language) and by email (in all their languages)
+  const rispondi = async (k, v = {}) => {
+    const vv = { tag, ...v };
+    t.risposte.push({ ts: new Date(ora).toISOString(), chi: "Controllo automatico", testo: tm(l0, k, vv) });
+    risposte = t.risposte;
+    await avvisaUtenteTicket(env, t, "Richiesta n. {id}: controllo della tessera", { id: r.id }, (l) => [tm(l, k, vv), tm(l, "Se hai ancora problemi, rispondi dalla sezione Assistenza.")]);
+  };
+  const admin = async (motivo, k, v) => {
+    a.fase = "admin"; passo("All'Amministratore: " + motivo);
+    if (k) await rispondi(k, v);
+    await notifica(env, `Ticket R-${r.id}: serve l'Amministratore`, `${TIPI_TICKET[t.tipo]}, tessera ${tag}: ${motivo}`);
+  };
+  // card deactivated or expired: a consistent answer, never reactivated (the Administrator decides)
+  const scaduta = async (scad) => {
+    const d = scad && Date.parse(scad) ? dataOra(Date.parse(scad), l0).split(",")[0] : "";
+    await admin("tessera scaduta" + (d ? " il " + d : ""), d ? "La tua tessera {tag} è scaduta il {data}: per questo la colonnina non la accetta, e non la riattiviamo in automatico. Se ti serve ancora, scrivilo qui: l'Amministratore ti risponde."
+      : "La tua tessera {tag} è scaduta: per questo la colonnina non la accetta, e non la riattiviamo in automatico. Se ti serve ancora, scrivilo qui: l'Amministratore ti risponde.", { data: d });
+  };
+  const disattivata = (motivo) => admin(motivo, "La tua tessera {tag} risulta disattivata: per questo la colonnina non la accetta, e non la riattiviamo in automatico. Se pensi che sia un errore, scrivilo qui: l'Amministratore ti risponde.");
+  if (a.fase === "nuovo" && ora - a.da > 3 * 3600e3) await admin("controllo non completato in 3 ore (pannello della colonnina non raggiungibile o presa sempre occupata)",
+    "Non siamo riusciti a controllare la tua tessera {tag} sulla colonnina: l'Amministratore controlla e ti risponde.");
+  if (a.fase === "nuovo") {
+    const sito = (await leggiMeta(env, "rfid_stato", [])) || [], e = sito.find((y) => y.id === tag);
+    const reg = (await leggiMeta(env, "tessere_bloccate", [])) || [];
+    const pre = await env.DB.prepare("SELECT residuo_wh, bloccata FROM prepagate WHERE tag=?").bind(tag).first().catch(() => null);
+    const aperto = await env.DB.prepare("SELECT 1 FROM tessere_nomi WHERE tag=? AND al IS NULL").bind(tag).first();
+    if (reg.some((y) => y.tag === tag)) await admin("tessera bloccata per una segnalazione di smarrimento o danno", "La tessera {tag} risulta bloccata per una segnalazione di smarrimento o danno: l'Amministratore controlla e ti risponde.");
+    else if (pre && (pre.bloccata || pre.residuo_wh <= 0)) await admin("prepagata senza credito", "La tessera {tag} è una prepagata e il credito è finito: per ricaricarlo contatta l'Amministratore.");
+    else if (e && (e.stato === "2" || (e.scad && Date.parse(e.scad) <= ora))) await scaduta(e.scad);
+    else if (e && e.stato !== "0") await disattivata("tessera bloccata o non valida nell'elenco");
+    else if (!e && !aperto) await disattivata("tessera tolta dall'elenco e periodo di assegnazione chiuso");
+    else {
+      let lista = null;
+      try { lista = await rfidDallaColonnina(env); } catch (_) { passo("Pannello della colonnina non raggiungibile: riprovo al prossimo controllo"); }
+      const c = lista && lista.find((y) => y.id === tag);
+      if (c && (c.stato === "2" || (c.scad && Date.parse(c.scad) <= ora))) await scaduta(c.scad);
+      else if (c && c.stato !== "0") await disattivata("tessera bloccata o non valida sulla colonnina");
+      else if (lista) {
+        if (!e || !c) {                                            // active but missing in the site's list or on the charger: put it back
+          if (!(await presaLibera(env, live))) passo("Tessera da rimettere sulla colonnina: aspetto la presa libera");
+          else {
+            const fatte = await rimettiTessere(env, [tag]);
+            if (!e && !fatte.length) await rfidCache(env, [...lista, { id: tag, scad: "", stato: "0" }]);   // it was on the charger, missing only in the site's list
+            passo("Tessera " + tag + " rimessa: " + (!c ? "mancava sulla colonnina" : "mancava nell'elenco del sito"));
+            a.fase = "verifica"; a.fix = ora;
+            await rispondi("Abbiamo trovato la tua tessera {tag} fuori dalla lista della colonnina e l'abbiamo rimessa. Riprova a caricare tra qualche minuto: quando la ricarica parte, la richiesta si chiude da sola.");
+          }
+        } else { a.fase = "riavvio"; passo("Tessera " + tag + " presente e attiva negli elenchi: serve un riavvio della colonnina"); }
+      }
+    }
+  }
+  if (a.fase === "riavvio") {
+    const esito = await riavviaPerTicket(env, live, r.id);
+    if (/^attesa/.test(esito)) {
+      passo("Riavvio rimandato (" + esito.replace(/^attesa: /, "") + ")");
+      if (ora - a.da > 3 * 3600e3) await admin("riavvio non possibile entro 3 ore (" + esito.replace(/^attesa: /, "") + ")", "La tua tessera {tag} risulta in regola, ma non siamo riusciti a riavviare la colonnina: l'Amministratore controlla e ti risponde.");
+    } else {
+      passo("Riavvio: " + esito); a.fase = "dopo_riavvio"; a.riavvio = ora;
+      await rispondi("La tua tessera {tag} risulta in regola: stiamo riavviando la colonnina per ricaricare la lista delle tessere. Riprova a caricare tra 10 minuti: quando la ricarica parte, la richiesta si chiude da sola.");
+    }
+  } else if (a.fase === "dopo_riavvio") {
+    const boot = live && live.boot && Date.parse(live.boot.ts);
+    if ((boot && boot > a.riavvio && live.connessa) || ora - a.riavvio > 15 * 60e3) {
+      let lista = null;
+      try { lista = await rfidDallaColonnina(env); } catch (_) { passo("Dopo il riavvio il pannello non risponde: riprovo al prossimo controllo"); }
+      if (lista) {
+        const sito = (await leggiMeta(env, "rfid_stato", [])) || [];
+        // only the site's active cards completely missing on the charger: deactivated or expired ones are not touched
+        const mancanti = sito.filter((y) => y.stato === "0" && !(y.scad && Date.parse(y.scad) <= ora) && !lista.some((c) => c.id === y.id)).map((y) => y.id);
+        let fatte = [];
+        if (mancanti.length && (await presaLibera(env, live))) fatte = await rimettiTessere(env, mancanti);
+        passo("Confronto dopo il riavvio: " + (mancanti.length ? "da rimettere " + mancanti.join(", ") + (fatte.length ? ", rimesse " + fatte.join(", ") : ", presa occupata: le rimette il controllo delle tessere") : "lista uguale all'elenco del sito"));
+        a.fase = "verifica"; a.fix = ora;
+      }
+    }
+  } else if (a.fase === "verifica") {
+    const u = live && live.ultima_tx;
+    const rifiutata = (z) => (live.rifiuti || []).some((q) => q.tag === tag && Math.abs(q.ts - z.inizio) < 120000);
+    if (u && u.tag === tag && u.inizio > a.fix && !rifiutata(u)) {
+      a.fase = "fatto"; passo("Ricarica partita con la tessera " + tag + ": ticket risolto");
+      const k = "La ricarica con la tessera {tag} è partita: chiudiamo la richiesta. Se hai ancora problemi, aprine una nuova.";
+      t.risposte.push({ ts: new Date(ora).toISOString(), chi: "Controllo automatico", testo: tm(l0, k, { tag }), esito: "risolto" }); risposte = t.risposte; stato = "risolto";
+      await avvisaUtenteTicket(env, t, "Richiesta n. {id} risolta", { id: r.id }, (l) => [tm(l, "La tua richiesta n. {id} ({tipo}) è stata risolta.", { id: r.id, tipo: tm(l, TIPI_TICKET[t.tipo]) }), tm(l, k, { tag })]);
+    } else if (ora - a.fix > 86400e3) await admin("nessuna ricarica con la tessera nelle 24 ore dopo l'intervento");
+  }
+  if (!x.auto && !risposte) await rispondi("Stiamo controllando la tua tessera {tag} sulla colonnina: ti scriviamo appena abbiamo l'esito.");
+  if (JSON.stringify(a) === prima && stato === r.stato && !risposte) return;
+  const nota = (t.nota ? t.nota.split("\n").filter((l) => !l.startsWith("Controllo automatico")).join("\n") + "\n" : "") + "Controllo automatico: " + a.passi.join(" | ");
+  const adesso = new Date(ora).toISOString();
+  await env.DB.prepare("UPDATE ticket SET stato=?, extra=?, nota=?, aggiornato=?, risposte=COALESCE(?, risposte), gestito=CASE WHEN ?='risolto' THEN ? ELSE gestito END WHERE id=?")
+    .bind(stato, await cifra(env, JSON.stringify({ ...x, auto: a }), t.utente + "|ticket_extra"), await cifra(env, nota.trim().slice(0, 2000), t.utente + "|ticket_nota"),
+      adesso, risposte ? await cifra(env, JSON.stringify(risposte), t.utente + "|ticket_risposte") : null, stato, adesso, r.id).run();
 }
 
 // ---------------------------------------------------- encryption of personal data (AES-256-GCM)
@@ -2981,7 +3204,7 @@ export default {
         const pg = await leggiMeta(env, "pagamento_tessera", {});
         return json({ paypal: pg.paypal || "", satispay: pg.satispay || "", revolut: pg.revolut || "" });
       }
-      if (url.pathname === "/api/ticket") return await ticket(req, env, me, url);
+      if (url.pathname === "/api/ticket") return await ticket(req, env, me, url, ctx);
       if (url.pathname === "/api/cifratura") {
         if (me.ruolo !== "admin") return json({ errore: "non autorizzato" }, 403);
         return json(await statoCifratura(env));
@@ -3151,7 +3374,7 @@ export default {
             const mi = Math.round(Number(b.min)), mx = Math.round(Number(b.max));
             if (!(mi >= 10 && mi <= 240)) return json({ errore: "Minuti non validi: da 10 a 240" }, 400);
             if (!(mx >= 1 && mx <= 6)) return json({ errore: "Riavvii al giorno non validi: da 1 a 6" }, 400);
-            await salvaMeta(env, "riavvio_auto_cfg", { on: !!b.on, min: mi, max: mx });
+            await salvaMeta(env, "riavvio_auto_cfg", { on: !!b.on, min: mi, max: mx, ticket: !!b.ticket });
             return json({ ok: true, riavvio: await leggiRiavvio(env) });
           }
           const a = listaEmail(b.a), cc = listaEmail(b.cc);

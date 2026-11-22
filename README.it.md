@@ -231,14 +231,18 @@ La scheda **Prepagate** (admin) gestisce le tessere con un credito in euro, scal
 
 ## Assistenza (ticket)
 
-Dalla scheda **Assistenza** l'utente apre una richiesta: tessera smarrita o danneggiata, richiesta di nuova tessera, correzione dei dati, cancellazione di dati o utenza, problema con la colonnina, altro. Massimo 5 richieste aperte, una sola richiesta di tessera; finché la richiesta è aperta si possono aggiungere informazioni. L'amministratore le gestisce dalla scheda **Ticket** (badge con le aperte): approva, rifiuta o chiude, con una nota; l'utente riceve l'esito per mail.
+Dalla scheda **Assistenza** l'utente apre una richiesta: la mia tessera non funziona, tessera smarrita o danneggiata, richiesta di nuova tessera, correzione dei dati, cancellazione di dati o utenza, problema con la colonnina (con «Che cosa succede?»: la ricarica non parte, altro problema), altro. Massimo 5 richieste aperte, una sola richiesta di tessera; finché la richiesta non è chiusa si possono aggiungere informazioni. Ogni richiesta ha uno stato colorato: aperta, in gestione, poi chiusa come approvata, rifiutata o risolta.
+
+L'amministratore le gestisce dalla scheda **Ticket** (badge con le richieste non chiuse), con il filtro **Aperti** (aperti e in gestione) o **Tutti** (anche i chiusi): prima gli aperti, poi quelli in gestione, poi per ultima modifica. Su ogni ticket: **Rispondi** (l'utente la riceve per email, lo stato non cambia), **Nota interna** (la vedono solo gli amministratori), **In gestione** (l'utente lo sa per email), **Risolta** per i problemi con la colonnina e gli altri (serve un messaggio per l'utente), approva / sostituisci tessera / assegna tessera / rifiuta / ritrovata / sblocca, **Riapri**. Il campo si apre sotto il ticket, con Annulla; il messaggio di chiusura va nell'email dell'esito e resta nella cronologia del ticket.
 
 - **Tessera smarrita o danneggiata**: la tessera viene **bloccata subito sulla colonnina** (se non risponde, il blocco viene ritentato ogni 5 minuti). L'amministratore la sostituisce ("Sostituisci tessera", con o senza nuova tessera) oppure, se ritrovata, "Ritrovata: sblocca e chiudi". Le tessere bloccate restano nell'elenco della colonnina come bloccate.
 - **Nuova tessera**: mostra il costo e i metodi di pagamento configurati (PayPal.me con importo già impostato, Satispay, Revolut, contanti alla consegna) e una causale pronta; l'amministratore riceve nome, telefono e metodo scelto e assegna la tessera dal ticket. Il sito non verifica il pagamento.
 - **Correzione dati**: se approvata, i dati vengono aggiornati.
 - **Cancellazione**: se approvata, utenza e dati personali vengono cancellati; restano i dati di consumo (il ticket diventa anonimo).
 
-Per tessera, colonnina e nuova tessera l'amministratore riceve anche la mail (destinatari del monitoraggio); per gli altri solo la notifica nel sito.
+Per ogni nuova richiesta l'amministratore riceve l'email (destinatari del monitoraggio).
+
+**Controllo automatico della tessera** (scheda OCPP > Riavvio automatico, spento di serie): per «La mia tessera non funziona» e «Problema con la colonnina > La ricarica non parte» il sito controlla la tessera indicata. Scaduta, disattivata, bloccata per smarrimento o prepagata senza credito: risponde spiegando il motivo e lascia il ticket all'amministratore, senza mai riattivarla. Attiva ma mancante dalla lista della colonnina: la rimette (a presa libera). Tutto in regola: riavvia la colonnina (Reset OCPP, o dal pannello se scollegata; a presa libera, con gli stessi limiti del riavvio automatico) e poi confronta la lista della colonnina con quella del sito, rimettendo le tessere attive mancanti. Il ticket si chiude da solo come risolto alla prima ricarica partita con quella tessera; altrimenti resta all'amministratore (dopo 3 ore senza riavvio possibile o 24 ore senza ricariche). Ogni passo va nella nota interna.
 
 ## Avvisi agli utenti
 Il sito comunica con gli utenti per mail, nella lingua dell'utente.
